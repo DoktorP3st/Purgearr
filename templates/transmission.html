@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set active = "transmission" %}
+
+{% block title %} — Transmission{% endblock %}
+{% block page_title %}Transmission — Nettoyage{% endblock %}
+
+{% block topbar_actions %}
+{% if orphans %}
+<button class="btn btn-danger" onclick="removeAllOrphans()">🗑️ Supprimer tous les orphelins ({{ orphans | length }})</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<!-- Orphelins -->
+<div class="section" style="margin-bottom:28px">
+  <div class="section-header">
+    <h3>⚠️ Torrents orphelins</h3>
+    <span class="text-muted text-sm">Fichiers supprimés mais torrent encore actif dans Transmission</span>
+  </div>
+
+  {% if orphans %}
+  <div style="padding:0 20px 20px">
+    {% for t in orphans %}
+    <div id="torrent-{{ t.id }}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;
+         background:var(--surface);border:1px solid var(--danger);border-radius:8px;margin-top:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">{{ t.name }}</div>
+        <div style="font-size:11px;font-family:monospace;color:var(--danger)">{{ t.expected_path }}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">
+          Status : {{ t.status }} · ID : {{ t.id }}
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="removeTorrent({{ t.id }}, '{{ t.name | e }}')">
+        🗑️ Supprimer
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">✓ Aucun torrent orphelin — tout est propre</div>
+  {% endif %}
+</div>
+
+<!-- Tous les torrents -->
+<div class="section">
+  <div class="section-header">
+    <h3>⬇️ Tous les torrents ({{ all_torrents | length }})</h3>
+    <span class="text-muted text-sm">Aperçu complet de Transmission</span>
+  </div>
+
+  {% if all_torrents %}
+  <div style="padding:20px;display:flex;flex-direction:column;gap:8px">
+    {% for t in all_torrents %}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+         background:var(--surface);border:1px solid var(--border);border-radius:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--text);word-break:break-all">{{ t.name }}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+          Ratio {{ t.uploadRatio | round(2) if t.uploadRatio else 0 }} ·
+          {% if t.rateUpload and t.rateUpload > 0 %}
+            <span style="color:var(--success)">🔥 Seeding actif</span>
+          {% elif t.status == 0 %}
+            <span style="color:var(--text-muted)">⏹ Stoppé</span>
+          {% else %}
+            <span style="color:var(--warning)">💤 Inactif</span>
+          {% endif %}
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="removeTorrent({{ t.id }}, '{{ t.name | e }}')">
+        🗑️
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">Aucun torrent dans Transmission</div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function removeTorrent(id, name) {
+  if (!confirm(`Retirer "${name}" de Transmission ?\n(Les fichiers NE seront PAS supprimés)`)) return;
+  const fd = new FormData();
+  fd.append('torrent_id', id);
+  const res  = await fetch('/api/transmission/remove', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.success) {
+    showToast(`✓ "${name}" retiré de Transmission`, 'success');
+    const el = document.getElementById('torrent-' + id);
+    if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(() => el.remove(), 300); }
+  } else {
+    showToast(`✗ ${data.error}`, 'danger');
+  }
+}
+
+async function removeAllOrphans() {
+  if (!confirm('Retirer TOUS les torrents orphelins de Transmission ?\n(Les fichiers étant déjà supprimés, seule l\'entrée Transmission sera retirée)')) return;
+  const res  = await fetch('/api/transmission/remove-all-orphans', { method: 'POST' });
+  const data = await res.json();
+  if (data.success) {
+    showToast(`✓ ${data.removed} torrent(s) retirés${data.failed ? ', ' + data.failed + ' erreur(s)' : ''}`, 'success');
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    showToast(`✗ ${data.error}`, 'danger');
+  }
+}
+</script>
+{% endblock %}

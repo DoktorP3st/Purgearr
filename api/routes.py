@@ -255,6 +255,58 @@ def protected_remove(title: str = Form(""), jellyfin_id: str = Form("")):
     return RedirectResponse("/protected", status_code=303)
 
 
+# ── Transmission orphelins ────────────────────────────────────────────────────
+
+@router.get("/transmission", response_class=HTMLResponse)
+def transmission_page(request: Request):
+    try:
+        tr = get_transmission()
+        orphans = tr.find_orphaned_torrents()
+        all_torrents = tr.get_all_torrents_with_stats()
+    except Exception as e:
+        orphans = []
+        all_torrents = []
+        logger.error("[Transmission] Erreur : %s", e)
+    return templates.TemplateResponse(request=request, name="transmission.html",
+        context={"orphans": orphans, "all_torrents": all_torrents})
+
+
+@router.get("/api/transmission/orphans")
+def api_transmission_orphans():
+    try:
+        orphans = get_transmission().find_orphaned_torrents()
+        return JSONResponse([{"id": t["id"], "name": t["name"],
+                              "path": t["expected_path"]} for t in orphans])
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/api/transmission/remove")
+def api_transmission_remove(torrent_id: int = Form(...)):
+    try:
+        get_transmission().stop_and_remove(torrent_id, delete_data=False)
+        return JSONResponse({"success": True})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/api/transmission/remove-all-orphans")
+def api_remove_all_orphans():
+    try:
+        tr = get_transmission()
+        orphans = tr.find_orphaned_torrents()
+        removed, failed = 0, 0
+        for t in orphans:
+            try:
+                tr.stop_and_remove(t["id"], delete_data=False)
+                removed += 1
+            except Exception:
+                failed += 1
+        return JSONResponse({"success": True, "removed": removed, "failed": failed})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
 # ── API JSON ──────────────────────────────────────────────────────────────────
 
 @router.get("/api/status")

@@ -1,3 +1,5 @@
+import os
+import re
 from typing import Dict, List, Optional
 import requests
 
@@ -11,6 +13,18 @@ TORRENT_STATS_FIELDS = [
 # status codes de Transmission
 STATUS_STOPPED = 0
 STATUS_SEEDING = 6
+
+
+def _norm(s: str) -> str:
+    """Normalise un nom de torrent : retire année, tags qualité, remplace séparateurs."""
+    s = s.lower()
+    s = re.sub(r"\(?\b(19|20)\d{2}\b\)?", "", s)
+    s = re.sub(
+        r"\b(bluray|bdrip|webrip|web-?dl|hdtv|4k|uhd|1080p|720p|480p"
+        r"|x264|x265|hevc|aac|dts|hdr|remux|complete"
+        r"|french|vff|vf|multi|truefrench|vostfr|mhd|custom)\b", "", s)
+    s = re.sub(r"[._\-\[\]\(\)\s]+", " ", s)
+    return s.strip()
 
 
 class TransmissionClient:
@@ -50,10 +64,13 @@ class TransmissionClient:
         return result.get("torrents", [])
 
     def find_by_name(self, name: str) -> Optional[Dict]:
-        name_lower = name.lower()
-        for torrent in self.get_all_torrents():
-            if name_lower in torrent.get("name", "").lower():
-                return torrent
+        """Recherche par nom normalisé (insensible aux points/tirets/année/qualité)."""
+        needle = _norm(name)
+        if not needle:
+            return None
+        for t in self.get_all_torrents():
+            if needle in _norm(t.get("name", "")):
+                return t
         return None
 
     def find_by_hash(self, hash_string: str) -> Optional[Dict]:
@@ -63,13 +80,28 @@ class TransmissionClient:
         return None
 
     def find_by_path(self, file_path: str) -> Optional[Dict]:
-        """Cherche un torrent dont le chemin de téléchargement correspond."""
-        for torrent in self.get_all_torrents():
-            download_dir = torrent.get("downloadDir", "")
-            torrent_name = torrent.get("name", "")
-            if file_path in f"{download_dir}/{torrent_name}" or torrent_name in file_path:
-                return torrent
+        """Cherche par downloadDir+name, par nom dans le chemin, ou dans les fichiers du torrent."""
+        for t in self.get_all_torrents():
+            dl   = t.get("downloadDir", "").rstrip("/")
+            name = t.get("name", "")
+            if file_path in f"{dl}/{name}" or name in file_path:
+                return t
+            # Vérifie chaque fichier du torrent
+            for f in t.get("files", []):
+                if file_path.endswith(f.get("name", "")) or f.get("name", "") in file_path:
+                    return t
         return None
+
+    def find_orphaned_torrents(self) -> List[Dict]:
+        """Retourne les torrents dont le chemin n'existe plus sur le disque."""
+        orphans = []
+        for t in self.get_all_torrents():
+            dl   = t.get("downloadDir", "").rstrip("/")
+            name = t.get("name", "")
+            path = f"{dl}/{name}"
+            if not os.path.exists(path):
+                orphans.append({**t, "expected_path": path})
+        return orphans
 
     def stop(self, torrent_id: int) -> bool:
         self._request("torrent-stop", {"ids": [torrent_id]})
