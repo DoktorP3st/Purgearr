@@ -46,14 +46,23 @@ _STOP_WORDS = {
 }
 
 
+def _extract_year(s: str) -> Optional[int]:
+    """Extrait l'année (1900-2099) d'un chemin ou nom de fichier."""
+    m = re.search(r'\b((?:19|20)\d{2})\b', s)
+    return int(m.group(1)) if m else None
+
+
 def _normalize(name: str) -> str:
     name = name.lower()
-    name = re.sub(r"[''`]", "", name)            # apostrophes → rien
+    name = re.sub(r"[''`]", "", name)
     name = re.sub(r"\(?\b(19|20)\d{2}\b\)?", "", name)
     name = re.sub(
         r"\b(bluray|bdrip|webrip|web-?dl|hdtv|4k|uhd|1080p|720p|480p"
         r"|x264|x265|hevc|aac|dts|hdr|remux|complete"
-        r"|french|vff|vf|multi|truefrench|vostfr|mhd|custom)\b", "", name)
+        r"|french|vff|vf|multi|truefrench|vostfr|mhd|custom"
+        r"|hd|ma|dd|ddp|eac3|ac3|atmos|truehd|dolby|10bit|8bit|dv|hdr10|imax|sdr"
+        r"|extended|unrated|theatrical|remastered|proper|repack|retail|limited)\b",
+        "", name)
     name = re.sub(r"[._\-\[\]\(\)\s]+", " ", name)
     return re.sub(r"\s+", " ", name).strip()
 
@@ -63,13 +72,19 @@ def _sig_words(norm: str) -> list:
     return [w for w in norm.split() if w not in _STOP_WORDS and len(w) >= 2]
 
 
-def _matches(entry_name: str, title: str) -> bool:
+def _matches(entry_name: str, title: str, known_year: Optional[int] = None) -> bool:
+    # Filtre par année : si l'entrée a une année différente du contenu connu → exclusion
+    # ex. "Blade (1998)" ne retrouve PAS "Blade Trinity (2004)" même si les noms se ressemblent
+    if known_year:
+        entry_year = _extract_year(entry_name)
+        if entry_year is not None and entry_year != known_year:
+            return False
+
     norm_entry = _normalize(entry_name)
     norm_title = _normalize(title)
     if not norm_title or not norm_entry:
         return False
 
-    # Correspondance exacte
     if norm_title == norm_entry:
         return True
 
@@ -79,11 +94,14 @@ def _matches(entry_name: str, title: str) -> bool:
     if not title_sig or len(entry_sig) < len(title_sig):
         return False
 
-    # Les mots significatifs du titre doivent être les PREMIERS mots
-    # significatifs de l'entrée — dans l'ordre, en tête.
-    # "blade ii"   → ["blade","ii"] doit être en tête → matche "blade ii 2002…"
-    # "blade ii"   → NE matche PAS "blade trinity…" (["blade","trinity"] ≠ ["blade","ii"])
-    # "blade ii"   → NE matche PAS "blade 1998…"    (["blade"] trop court)
+    # Limite le bruit résiduel : au plus 1 mot sig de plus que le titre
+    # (ex. le release group "RiFiFi" peut survivre à la normalisation)
+    # "Daredevil" → max 2 mots sig → "daredevil born again" (3) est rejeté
+    if len(entry_sig) > len(title_sig) + 1:
+        return False
+
+    # Les mots sig du titre doivent être les PREMIERS mots sig de l'entrée (préfixe)
+    # "blade ii" → ["blade","ii"] doit précéder → ne matche PAS "blade trinity"
     return entry_sig[:len(title_sig)] == title_sig
 
 
@@ -140,6 +158,8 @@ def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Di
     known_real   = ""
     known_inode  = None
     known_hash   = ""
+    # L'année est extraite de la chaîne de chemin même si le fichier est déjà supprimé
+    known_year   = _extract_year(known_path) if known_path else None
 
     if known_path and os.path.isfile(known_path):
         known_real  = os.path.realpath(known_path)
@@ -176,9 +196,7 @@ def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Di
                     elif known_hash and ext in VIDEO_EXTENSIONS:
                         if _file_hash(entry.path) == known_hash:
                             match_method = "hash"
-                    elif ext in VIDEO_EXTENSIONS and _matches(entry.name, title):
-                        # Titre uniquement sur fichiers vidéo — les images compagnes
-                        # sont supprimées automatiquement par _delete_companions()
+                    elif ext in VIDEO_EXTENSIONS and _matches(entry.name, title, known_year):
                         match_method = "titre"
 
                 elif entry.is_dir():
@@ -190,7 +208,7 @@ def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Di
                             if known_hash and _file_hash(vf) == known_hash:
                                 match_method = "hash"
                                 break
-                    if match_method is None and _matches(entry.name, title):
+                    if match_method is None and _matches(entry.name, title, known_year):
                         match_method = "titre"
 
                 if match_method:
