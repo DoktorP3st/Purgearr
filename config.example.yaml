@@ -1,0 +1,59 @@
+# ============================================================
+#  Purgearr — Configuration exemple
+#  Copier ce fichier en config.yaml et remplir les valeurs
+#  Au premier démarrage, config.yaml est migré vers data/config.json
+#  Ensuite tout est éditable depuis l'interface web (Paramètres)
+# ============================================================
+
+radarr:
+  url: "http://192.168.1.x:7878/"
+  api_key: "VOTRE_CLE_API_RADARR"
+
+sonarr:
+  url: "http://192.168.1.x:8989/"
+  api_key: "VOTRE_CLE_API_SONARR"
+
+transmission:
+  host: "192.168.1.x"
+  port: 9091
+  username: ""          # laisser vide si pas d'auth
+  password: ""          # laisser vide si pas d'auth
+
+jellyfin:
+  url: "http://192.168.1.x:8096/"
+  api_key: "VOTRE_CLE_API_JELLYFIN"
+
+scheduler:
+  queue_interval_minutes: 360   # Vérification queue de suppression (mode auto)
+  scan_interval_minutes: 360    # Import données Jellyfin (vus, favoris)
+
+telegram:
+  enabled: false
+  bot_token: ""
+  chat_id: ""
+
+rules:
+  mode: "manual"                # "manual" | "auto"
+  primary_user: ""              # ID Jellyfin de l'utilisateur principal
+  required_users: []            # IDs des utilisateurs qui doivent aussi avoir regardé
+  watch_percentage_threshold: 85
+  deletion_delay_hours: 0
+  multi_user_mode: "any"        # "any" | "all"
+  watched_users: []
+  delete_files: true
+  add_to_exclusion: true
+  disk_usage_threshold: 0       # % disque max avant nettoyage auto (0 = désactivé)
+
+  movies:
+    enabled: true
+    watch_percentage_threshold: 85
+    deletion_delay_hours: 0
+
+  series:
+    enabled: true
+    delete_mode: "episode"      # "episode" | "series"
+    watch_percentage_threshold: 85
+    deletion_delay_hours: 0
+
+extra_paths: []                 # Chemins additionnels à scanner (copies, hardlinks)
+                                # Ex: ["/srv/data/downloads", "/srv/data/films2"]

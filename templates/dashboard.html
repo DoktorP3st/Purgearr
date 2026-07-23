@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+
+{% block title %} — Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block topbar_actions %}
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn btn-ghost btn-sm" onclick="runScan()" id="btn-scan">🔄 Lancer un scan</button>
+    <button class="btn btn-primary btn-sm" onclick="processNow()">▶ Traiter la queue</button>
+  </div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Stat cards -->
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="label">Films supprimés</div>
+    <div class="value">{{ stats.movies_deleted }}</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="label">Épisodes supprimés</div>
+    <div class="value">{{ stats.episodes_deleted }}</div>
+  </div>
+  <div class="stat-card orange">
+    <div class="label">En queue</div>
+    <div class="value">{{ stats.queue_pending }}</div>
+  </div>
+  <div class="stat-card green">
+    <div class="label">Éléments protégés</div>
+    <div class="value">{{ stats.protected }}</div>
+  </div>
+</div>
+
+<!-- Queue en attente -->
+<div class="section">
+  <div class="section-header">
+    <h3>Queue de suppression</h3>
+    <span class="text-muted text-sm">{{ stats.queue_pending }} en attente</span>
+  </div>
+  {% if queue %}
+  <table>
+    <thead>
+      <tr>
+        <th>Titre</th>
+        <th>Type</th>
+        <th>Série</th>
+        <th>Planifié</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in queue %}
+      <tr>
+        <td>{{ item.item_title }}</td>
+        <td>
+          {% if item.item_type == "Movie" %}
+            <span class="badge badge-movie">Film</span>
+          {% else %}
+            <span class="badge badge-episode">Épisode</span>
+          {% endif %}
+        </td>
+        <td class="text-muted">{{ item.series_title or "—" }}</td>
+        <td class="text-sm text-muted">{{ item.scheduled_at.strftime("%d/%m %H:%M") }}</td>
+        <td>
+          <button class="btn btn-danger btn-sm" onclick="cancelItem({{ item.id }}, this)">Annuler</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucun item en attente de suppression</div>
+  {% endif %}
+</div>
+
+<!-- Activité récente -->
+<div class="section">
+  <div class="section-header">
+    <h3>Suppressions récentes</h3>
+    <a href="/history" class="btn btn-ghost btn-sm">Voir tout</a>
+  </div>
+  {% if recent %}
+  <table>
+    <thead>
+      <tr>
+        <th>Titre</th>
+        <th>Type</th>
+        <th>Services</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in recent %}
+      <tr>
+        <td>
+          {{ item.item_title }}
+          {% if item.error %}<span title="{{ item.error }}" style="color:var(--danger);margin-left:4px">⚠</span>{% endif %}
+        </td>
+        <td>
+          {% if item.item_type == "Movie" %}
+            <span class="badge badge-movie">Film</span>
+          {% else %}
+            <span class="badge badge-episode">Épisode</span>
+          {% endif %}
+        </td>
+        <td>
+          {% set services = item.deleted_from | fromjson %}
+          {% for s in services %}
+            {% if "radarr" in s %}<span class="badge badge-radarr">Radarr</span> {% endif %}
+            {% if "sonarr" in s %}<span class="badge badge-sonarr">Sonarr</span> {% endif %}
+            {% if "transmission" in s %}<span class="badge badge-trans">Transmission</span> {% endif %}
+            {% if "jellyfin" in s %}<span class="badge badge-jelly">Jellyfin</span> {% endif %}
+          {% endfor %}
+        </td>
+        <td class="text-sm text-muted">{{ item.deleted_at.strftime("%d/%m/%Y %H:%M") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune suppression pour l'instant</div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function cancelItem(id, btn) {
+  if (!confirm('Annuler cette suppression ?')) return;
+  fetch(`/api/queue/${id}/cancel`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => { if (d.status === 'ok') btn.closest('tr').remove(); });
+}
+
+function processNow() {
+  fetch('/api/queue/process-now', { method: 'POST' })
+    .then(() => location.reload());
+}
+
+function runScan() {
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scan en cours…';
+  fetch('/api/scan/import', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      btn.textContent = `✓ ${d.movies} films · ${d.episodes} épisodes importés`;
+      setTimeout(() => { btn.disabled = false; btn.textContent = '🔄 Lancer un scan'; }, 4000);
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = '🔄 Lancer un scan'; });
+}
+</script>
+{% endblock %}

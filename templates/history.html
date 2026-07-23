@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set active = "history" %}
+
+{% block title %} — Historique{% endblock %}
+{% block page_title %}Historique des suppressions{% endblock %}
+
+{% block content %}
+
+<div class="section">
+  <div class="section-header">
+    <h3>{{ items | length }} suppression(s)</h3>
+  </div>
+  {% if items %}
+  <table>
+    <thead>
+      <tr>
+        <th>Titre</th>
+        <th>Type</th>
+        <th>Série</th>
+        <th>Services</th>
+        <th>Déclenché par</th>
+        <th>Date</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.item_title }}</td>
+        <td>
+          {% if item.item_type == "Movie" %}
+            <span class="badge badge-movie">Film</span>
+          {% else %}
+            <span class="badge badge-episode">Épisode</span>
+          {% endif %}
+        </td>
+        <td class="text-muted">{{ item.series_title or "—" }}</td>
+        <td>
+          {% for s in item.services_list %}
+            {% if "radarr" in s %}<span class="badge badge-radarr">Radarr</span> {% endif %}
+            {% if "sonarr" in s %}<span class="badge badge-sonarr">Sonarr</span> {% endif %}
+            {% if "transmission" in s %}<span class="badge badge-trans">Transmission</span> {% endif %}
+            {% if "jellyfin" in s %}<span class="badge badge-jelly">Jellyfin</span> {% endif %}
+          {% endfor %}
+        </td>
+        <td class="text-muted text-sm">{{ item.triggered_by or "—" }}</td>
+        <td class="text-sm text-muted">{{ item.deleted_at.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td>
+          {% if item.error %}
+            <span style="color:var(--warning)" title="{{ item.error }}">⚠ Partiel</span>
+          {% else %}
+            <span style="color:var(--success)">✓ OK</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Aucune suppression enregistrée</div>
+  {% endif %}
+</div>
+
+{% endblock %}

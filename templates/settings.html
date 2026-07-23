@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% set active = "settings" %}
+
+{% block title %} — Paramètres{% endblock %}
+{% block page_title %}Paramètres{% endblock %}
+
+{% block content %}
+
+{% if saved %}
+<div class="alert alert-success" style="margin-bottom:20px">✓ Paramètres sauvegardés</div>
+{% endif %}
+
+<!-- Mode Manuel / Auto -->
+<div class="section" style="margin-bottom:24px">
+  <div class="section-header"><h3>Mode de fonctionnement</h3></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px">
+    <a href="/api/set-mode/manual" class="mode-card {% if cfg.rules.mode != 'auto' %}mode-active{% endif %}">
+      <div class="mode-icon">🖱️</div>
+      <div class="mode-label">Manuel</div>
+      <div class="mode-desc">Tu choisis toi-même ce qui est supprimé depuis la page "Regardés"</div>
+    </a>
+    <a href="/api/set-mode/auto" class="mode-card {% if cfg.rules.mode == 'auto' %}mode-active{% endif %}">
+      <div class="mode-icon">⚡</div>
+      <div class="mode-label">Automatique</div>
+      <div class="mode-desc">Suppression automatique selon les règles ci-dessous</div>
+    </a>
+  </div>
+</div>
+
+<form method="post" action="/settings">
+
+  <!-- Connexions -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header">
+      <h3>🔌 Connexions</h3>
+      <span class="text-muted text-sm">Sauvegardé dans <code>data/config.json</code></span>
+    </div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label>Jellyfin URL</label>
+        <input type="text" name="jellyfin_url" value="{{ cfg.jellyfin.url }}" placeholder="http://192.168.1.x:8096">
+      </div>
+      <div class="form-group">
+        <label>Jellyfin API Key</label>
+        <input type="text" name="jellyfin_api_key" value="{{ cfg.jellyfin.api_key }}">
+      </div>
+
+      <div class="form-group">
+        <label>Radarr URL</label>
+        <input type="text" name="radarr_url" value="{{ cfg.radarr.url }}" placeholder="http://192.168.1.x:7878">
+      </div>
+      <div class="form-group">
+        <label>Radarr API Key</label>
+        <input type="text" name="radarr_api_key" value="{{ cfg.radarr.api_key }}">
+      </div>
+
+      <div class="form-group">
+        <label>Sonarr URL</label>
+        <input type="text" name="sonarr_url" value="{{ cfg.sonarr.url }}" placeholder="http://192.168.1.x:8989">
+      </div>
+      <div class="form-group">
+        <label>Sonarr API Key</label>
+        <input type="text" name="sonarr_api_key" value="{{ cfg.sonarr.api_key }}">
+      </div>
+
+      <div class="form-group">
+        <label>Transmission Host</label>
+        <input type="text" name="trans_host" value="{{ cfg.transmission.host }}" placeholder="192.168.1.x">
+      </div>
+      <div class="form-group">
+        <label>Transmission Port</label>
+        <input type="number" name="trans_port" value="{{ cfg.transmission.port | default(9091) }}">
+      </div>
+      <div class="form-group">
+        <label>Transmission Username <span class="text-muted">(optionnel)</span></label>
+        <input type="text" name="trans_user" value="{{ cfg.transmission.username or '' }}">
+      </div>
+      <div class="form-group">
+        <label>Transmission Password <span class="text-muted">(optionnel)</span></label>
+        <input type="password" name="trans_pass" value="{{ cfg.transmission.password or '' }}">
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Utilisateurs -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>Utilisateurs</h3></div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label>👑 Utilisateur principal (doit toujours avoir regardé)</label>
+        <select name="primary_user">
+          <option value="">— Aucun (utilise le mode multi-user) —</option>
+          {% for u in jf_users %}
+          <option value="{{ u.Id }}"
+            {% if cfg.rules.primary_user == u.Id %}selected{% endif %}>
+            {{ u.Name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>👥 Utilisateurs requis (doivent aussi avoir regardé)</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          {% for u in jf_users %}
+          {% if u.Id != cfg.rules.primary_user %}
+          <div class="checkbox-group">
+            <input type="checkbox" class="req-user-cb" value="{{ u.Id }}"
+                   id="req_{{ u.Id }}"
+                   {% if u.Id in (cfg.rules.required_users or []) %}checked{% endif %}>
+            <label for="req_{{ u.Id }}">{{ u.Name }}</label>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <input type="hidden" name="required_users_csv" id="required_users_csv"
+               value="{{ (cfg.rules.required_users or []) | join(',') }}">
+        <small class="text-muted mt-8">Les autres utilisateurs n'ont aucun impact sur la suppression</small>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scheduler -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>Planification des scans</h3></div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label>🔄 Fréquence d'import des données (vus, favoris…)</label>
+        <select name="scan_interval">
+          {% for minutes, label in interval_options.items() %}
+          <option value="{{ minutes }}"
+            {% if (cfg.scheduler.scan_interval_minutes | default(360)) | int == minutes %}selected{% endif %}>
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+        <small class="text-muted mt-8">Lecture seule — aucune suppression déclenchée</small>
+      </div>
+
+      <div class="form-group">
+        <label>⚡ Fréquence de traitement de la queue (mode Auto uniquement)</label>
+        <select name="queue_interval">
+          {% for minutes, label in interval_options.items() %}
+          <option value="{{ minutes }}"
+            {% if (cfg.scheduler.queue_interval_minutes | default(360)) | int == minutes %}selected{% endif %}>
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+        <small class="text-muted mt-8">Sans effet en mode Manuel</small>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Règles globales -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>Règles globales</h3></div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <label>% de visionnage minimum pour déclencher</label>
+        <input type="number" name="watch_pct" min="0" max="100"
+               value="{{ cfg.rules.watch_percentage_threshold | default(85) }}">
+      </div>
+
+      <div class="form-group">
+        <label>Délai avant suppression (heures, 0 = immédiat)</label>
+        <input type="number" name="delay_hours" min="0"
+               value="{{ cfg.rules.deletion_delay_hours | default(0) }}">
+      </div>
+
+      <div class="form-group">
+        <label>Mode multi-utilisateur</label>
+        <select name="multi_user_mode">
+          <option value="any"  {% if cfg.rules.multi_user_mode == 'any'  %}selected{% endif %}>
+            Dès qu'un utilisateur a regardé
+          </option>
+          <option value="all"  {% if cfg.rules.multi_user_mode == 'all'  %}selected{% endif %}>
+            Quand TOUS les utilisateurs ont regardé
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Seuil disque pour nettoyage auto (%, 0 = désactivé)</label>
+        <input type="number" name="disk_threshold" min="0" max="100"
+               value="{{ cfg.rules.disk_usage_threshold | default(0) }}">
+      </div>
+
+      <div class="form-group full">
+        <label>Utilisateurs à considérer (IDs Jellyfin, un par ligne — vide = tous)</label>
+        <textarea name="watched_users">{{ (cfg.rules.watched_users or []) | join('\n') }}</textarea>
+        <small class="text-muted mt-8">
+          IDs disponibles : récupérés lors du test de connexion (voir test_connections.py)
+        </small>
+      </div>
+
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" name="delete_files" id="delete_files"
+                 {% if cfg.rules.delete_files %}checked{% endif %}>
+          <label for="delete_files">Supprimer les fichiers du disque</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" name="add_to_exclusion" id="add_to_exclusion"
+                 {% if cfg.rules.add_to_exclusion %}checked{% endif %}>
+          <label for="add_to_exclusion">Bloquer le re-téléchargement (liste d'exclusion)</label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Films -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>Films</h3></div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" name="movies_enabled" id="movies_enabled"
+                 {% if cfg.rules.movies.enabled %}checked{% endif %}>
+          <label for="movies_enabled">Activer la suppression automatique des films</label>
+        </div>
+      </div>
+
+      <div></div>
+
+      <div class="form-group">
+        <label>% de visionnage minimum (override)</label>
+        <input type="number" name="movies_pct" min="0" max="100"
+               value="{{ cfg.rules.movies.watch_percentage_threshold | default(85) }}">
+      </div>
+
+      <div class="form-group">
+        <label>Délai avant suppression (heures)</label>
+        <input type="number" name="movies_delay" min="0"
+               value="{{ cfg.rules.movies.deletion_delay_hours | default(0) }}">
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Séries -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>Séries</h3></div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" name="series_enabled" id="series_enabled"
+                 {% if cfg.rules.series.enabled %}checked{% endif %}>
+          <label for="series_enabled">Activer la suppression automatique des séries</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Mode de suppression</label>
+        <select name="series_mode">
+          <option value="episode" {% if cfg.rules.series.delete_mode == 'episode' %}selected{% endif %}>
+            Épisode par épisode
+          </option>
+          <option value="series"  {% if cfg.rules.series.delete_mode == 'series'  %}selected{% endif %}>
+            Série entière (quand tous les épisodes vus)
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>% de visionnage minimum (override)</label>
+        <input type="number" name="series_pct" min="0" max="100"
+               value="{{ cfg.rules.series.watch_percentage_threshold | default(85) }}">
+      </div>
+
+      <div class="form-group">
+        <label>Délai avant suppression (heures)</label>
+        <input type="number" name="series_delay" min="0"
+               value="{{ cfg.rules.series.deletion_delay_hours | default(0) }}">
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Chemins additionnels -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header">
+      <h3>🗂️ Chemins additionnels à scanner</h3>
+      <span class="text-muted text-sm">Copies sur d'autres disques — supprimées lors du nettoyage</span>
+    </div>
+    <div style="padding:20px">
+      <textarea name="extra_paths_raw" rows="5" style="font-family:monospace;font-size:12px"
+                placeholder="/srv/mergerfs/DATA_POOL/HDD 1TO/downloads&#10;/srv/mergerfs/DATA_POOL/HDD 2TO/films">{{ (extra_paths or []) | join('\n') }}</textarea>
+      <small class="text-muted mt-8" style="display:block">
+        Un chemin absolu par ligne. Lors d'une suppression, l'app scanne ces dossiers pour trouver et supprimer TOUTES les copies du contenu (hardlinks, doublons, dossiers seeds…).
+      </small>
+
+      {% if extra_paths %}
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+        {% for p in extra_paths %}
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;
+                    background:var(--surface);padding:6px 10px;border-radius:6px;border:1px solid var(--border)">
+          <span style="color:var(--success)">✓</span>
+          <span style="font-family:monospace;color:var(--text)">{{ p }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
+  </div>
+
+</form>
+
+
+{% endblock %}

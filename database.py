@@ -1,0 +1,84 @@
+from datetime import datetime
+from pathlib import Path
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine, event
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+_DATA_DIR = Path(__file__).parent / "data"
+_DATA_DIR.mkdir(exist_ok=True)
+DATABASE_URL = f"sqlite:///{_DATA_DIR / 'purgearr.db'}"
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False, "timeout": 30},
+)
+
+@event.listens_for(engine, "connect")
+def _set_wal_mode(dbapi_conn, _):
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA synchronous=NORMAL")
+    cur.close()
+
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+
+class WatchEvent(Base):
+    """Un utilisateur a regardé un item jusqu'à un certain pourcentage."""
+    __tablename__ = "watch_events"
+
+    id = Column(Integer, primary_key=True)
+    jellyfin_item_id = Column(String, nullable=False, index=True)
+    jellyfin_user_id = Column(String, nullable=False)
+    user_name = Column(String)
+    item_type = Column(String)       # "Movie" ou "Episode"
+    item_title = Column(String)
+    series_title = Column(String)    # rempli si Episode
+    season = Column(Integer)
+    episode = Column(Integer)
+    percentage = Column(Float, default=0.0)
+    watched_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DeletionQueue(Base):
+    """Items en attente de suppression (délai configuré)."""
+    __tablename__ = "deletion_queue"
+
+    id = Column(Integer, primary_key=True)
+    jellyfin_item_id = Column(String, nullable=False, index=True)
+    item_type = Column(String)
+    item_title = Column(String)
+    series_title = Column(String)
+    tmdb_id = Column(String)
+    tvdb_id = Column(String)
+    imdb_id = Column(String)
+    file_path = Column(String)
+    scheduled_at = Column(DateTime, nullable=False)
+    status = Column(String, default="pending")   # pending | processing | done | failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DeletionHistory(Base):
+    """Historique de toutes les suppressions effectuées."""
+    __tablename__ = "deletion_history"
+
+    id = Column(Integer, primary_key=True)
+    jellyfin_item_id = Column(String)
+    item_type = Column(String)
+    item_title = Column(String)
+    series_title = Column(String)
+    deleted_at = Column(DateTime, default=datetime.utcnow)
+    deleted_from = Column(Text)      # JSON: ["radarr", "transmission", "jellyfin"]
+    triggered_by = Column(String)    # user_id ou "scheduler"
+    error = Column(Text)             # message d'erreur si échec partiel
+
+
+def init_db():
+    Base.metadata.create_all(engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

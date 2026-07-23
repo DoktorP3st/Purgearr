@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% set active = "protected" %}
+
+{% block title %} — Protection{% endblock %}
+{% block page_title %}Liste de protection{% endblock %}
+
+{% block content %}
+
+<!-- Recherche Jellyfin -->
+<div class="section" style="margin-bottom:24px">
+  <div class="section-header">
+    <h3>Rechercher un contenu à protéger</h3>
+    <span class="text-muted text-sm">Films et séries de ta bibliothèque Jellyfin</span>
+  </div>
+  <div style="padding:20px">
+    <div style="position:relative">
+      <input type="text" id="search-input" placeholder="Harry Potter, Inception, Breaking Bad…"
+             autocomplete="off" style="padding-left:36px">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
+    </div>
+    <div id="search-results" style="margin-top:16px;display:none">
+      <div id="results-grid" class="poster-grid"></div>
+      <div id="results-empty" class="empty" style="display:none">Aucun résultat</div>
+    </div>
+  </div>
+</div>
+
+<!-- Éléments protégés -->
+{% if protected_items %}
+<div class="section">
+  <div class="section-header">
+    <h3>🛡️ Contenus protégés</h3>
+    <span class="text-muted text-sm">{{ protected_items | length }} élément(s) — jamais supprimés automatiquement</span>
+  </div>
+  <div class="poster-grid" style="padding:20px">
+    {% for item in protected_items %}
+    <div class="poster-card is-fav">
+
+      <div class="poster-img-wrap {% if not item.image_url %}no-img{% endif %}">
+        {% if item.image_url %}
+        <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
+             onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
+        {% endif %}
+
+        <div class="poster-badges">
+          {% if item.type == "Movie" %}
+            <span class="badge badge-movie">Film</span>
+          {% else %}
+            <span class="badge badge-episode">Série</span>
+          {% endif %}
+        </div>
+
+        <div class="ready-badge ready-ok" style="top:6px;right:6px">🔒</div>
+      </div>
+
+      <div class="poster-info">
+        <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
+        <div class="poster-pct text-muted text-sm">
+          {% if item.source == 'id' %}Par ID Jellyfin{% else %}Par titre{% endif %}
+        </div>
+      </div>
+
+      <!-- Overlay avec bouton retirer -->
+      <div class="poster-overlay">
+        <div style="text-align:center;padding:12px">
+          <div style="font-size:28px;margin-bottom:8px">🔒</div>
+          <div style="font-size:12px;color:var(--warning);font-weight:600;margin-bottom:12px">Protégé</div>
+          <form method="post" action="/protected/remove" style="display:inline">
+            {% if item.id %}
+            <input type="hidden" name="jellyfin_id" value="{{ item.id }}">
+            {% else %}
+            <input type="hidden" name="title" value="{{ item.title }}">
+            {% endif %}
+            <button type="submit" class="btn btn-danger btn-sm">🗑️ Retirer</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% else %}
+<div class="section">
+  <div class="empty">Aucun élément protégé — tout peut être supprimé automatiquement</div>
+</div>
+{% endif %}
+
+<!-- Formulaire ajout caché -->
+<form id="add-form" method="post" action="/protected/add" style="display:none">
+  <input type="hidden" name="title" id="add-title">
+  <input type="hidden" name="jellyfin_id" id="add-jellyfin-id">
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let searchTimer = null;
+
+const input   = document.getElementById('search-input');
+const results = document.getElementById('search-results');
+const grid    = document.getElementById('results-grid');
+const empty   = document.getElementById('results-empty');
+
+input.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = input.value.trim();
+  if (q.length < 2) { results.style.display = 'none'; return; }
+  searchTimer = setTimeout(() => doSearch(q), 300);
+});
+
+async function doSearch(q) {
+  const res   = await fetch(`/api/search/jellyfin?q=${encodeURIComponent(q)}`);
+  const items = await res.json();
+
+  grid.innerHTML = '';
+  results.style.display = 'block';
+
+  if (!items.length) {
+    empty.style.display = 'block';
+    grid.style.display  = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.style.display  = 'grid';
+
+  items.forEach(it => {
+    const card = document.createElement('div');
+    card.className = 'poster-card' + (it.is_protected ? ' is-fav' : '');
+    card.style.cursor = it.is_protected ? 'default' : 'pointer';
+    card.innerHTML = `
+      <div class="poster-img-wrap">
+        <img src="${it.image_url}" alt="${esc(it.title)}" class="poster-img"
+             onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
+        <div class="poster-badges">
+          <span class="badge ${it.type === 'Movie' ? 'badge-movie' : 'badge-episode'}">
+            ${it.type === 'Movie' ? 'Film' : 'Série'}
+          </span>
+        </div>
+        ${it.is_protected ? '<div class="ready-badge ready-ok" style="top:6px;right:6px">🔒 Protégé</div>' : ''}
+      </div>
+      <div class="poster-info">
+        <div class="poster-title" title="${esc(it.title)}">${esc(it.title)}</div>
+        <div class="poster-pct text-muted text-sm">${it.is_protected ? '✓ Déjà protégé' : 'Cliquer pour protéger'}</div>
+      </div>
+      ${!it.is_protected ? `
+      <div class="poster-overlay">
+        <div style="text-align:center;padding:12px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${esc(it.title)}</div>
+          <button class="btn btn-primary btn-sm protect-btn">🔒 Protéger</button>
+        </div>
+      </div>` : ''}
+    `;
+
+    if (!it.is_protected) {
+      card.querySelector('.protect-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        addProtection(it.id);
+      });
+    }
+
+    grid.appendChild(card);
+  });
+}
+
+function addProtection(id) {
+  document.getElementById('add-title').value = '';
+  document.getElementById('add-jellyfin-id').value = id;
+  document.getElementById('add-form').submit();
+}
+
+function esc(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}
