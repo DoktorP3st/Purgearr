@@ -38,14 +38,29 @@ def _file_hash(path: str, chunk: int = 65536) -> str:
         return ""
 
 
+# Articles et prépositions ignorés dans la comparaison (mais PAS les chiffres/numéros de saga)
+_STOP_WORDS = {
+    "the", "and", "of", "in", "a", "an", "to", "or", "by", "at", "from",
+    "le", "la", "les", "de", "du", "des", "un", "une", "et", "au", "aux",
+    "en", "sur", "dans", "par", "pour",
+}
+
+
 def _normalize(name: str) -> str:
     name = name.lower()
+    name = re.sub(r"[''`]", "", name)            # apostrophes → rien
     name = re.sub(r"\(?\b(19|20)\d{2}\b\)?", "", name)
     name = re.sub(
         r"\b(bluray|bdrip|webrip|web-?dl|hdtv|4k|uhd|1080p|720p|480p"
-        r"|x264|x265|hevc|aac|dts|hdr|remux|complete)\b", "", name)
-    name = re.sub(r"[._\-\s]+", " ", name)
+        r"|x264|x265|hevc|aac|dts|hdr|remux|complete"
+        r"|french|vff|vf|multi|truefrench|vostfr|mhd|custom)\b", "", name)
+    name = re.sub(r"[._\-\[\]\(\)\s]+", " ", name)
     return re.sub(r"\s+", " ", name).strip()
+
+
+def _sig_words(norm: str) -> list:
+    """Mots significatifs : sans stop words, longueur >= 2 (garde 'ii', 'iii', '2'…)."""
+    return [w for w in norm.split() if w not in _STOP_WORDS and len(w) >= 2]
 
 
 def _matches(entry_name: str, title: str) -> bool:
@@ -54,22 +69,22 @@ def _matches(entry_name: str, title: str) -> bool:
     if not norm_title or not norm_entry:
         return False
 
-    # Correspondance exacte après normalisation
+    # Correspondance exacte
     if norm_title == norm_entry:
         return True
 
-    # Le titre est en début d'entrée avec une frontière de mot
-    # ex: "avatar" valide "avatar 2" mais pas "avengers"
-    if norm_entry.startswith(norm_title + " "):
-        return True
+    title_sig = _sig_words(norm_title)
+    entry_sig  = _sig_words(norm_entry)
 
-    # Correspondance par mots entiers — TOUS les mots significatifs doivent matcher
-    # (pas de sous-chaîne : "her" ne matche pas dans "together")
-    words = [w for w in norm_title.split() if len(w) > 3]
-    if not words:
+    if not title_sig or len(entry_sig) < len(title_sig):
         return False
-    entry_words = set(norm_entry.split())
-    return all(w in entry_words for w in words)
+
+    # Les mots significatifs du titre doivent être les PREMIERS mots
+    # significatifs de l'entrée — dans l'ordre, en tête.
+    # "blade ii"   → ["blade","ii"] doit être en tête → matche "blade ii 2002…"
+    # "blade ii"   → NE matche PAS "blade trinity…" (["blade","trinity"] ≠ ["blade","ii"])
+    # "blade ii"   → NE matche PAS "blade 1998…"    (["blade"] trop court)
+    return entry_sig[:len(title_sig)] == title_sig
 
 
 def _calc_size(path: str) -> Tuple[int, int]:
