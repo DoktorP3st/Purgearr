@@ -20,7 +20,10 @@ def parse_tracker(comment: str) -> Tuple[str, str]:
         if not domain:
             return "", ""
         if url.lower().startswith("udp://") or "/announce" in p.path.lower():
-            return domain, f"https://{domain}/"
+            # Sous-domaine privé tracker.* → pointer vers le site public www.*
+            base_domain = re.sub(r'^tracker\.', '', domain)
+            public_url = f"https://www.{base_domain}/" if base_domain != domain else f"https://{domain}/"
+            return base_domain, public_url
         return domain, url
     except Exception:
         return "", ""
