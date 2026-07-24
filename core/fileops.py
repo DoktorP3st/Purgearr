@@ -181,12 +181,23 @@ def scan_copies_smart(
                         continue
 
                     # Dossier parent du fichier trouvé = dossier release
-                    # (évite de remonter trop haut si base contient film/ ou serie/)
+                    # SAUF si ce parent est un dossier catégorie (film/, série/…)
+                    # contenant plusieurs films — dans ce cas on ne prend que le fichier.
                     parent = os.path.dirname(fpath)
                     if os.path.normpath(parent) == os.path.normpath(base):
                         release = fpath   # fichier directement dans base
                     else:
-                        release = parent  # dossier contenant le fichier
+                        try:
+                            video_siblings = sum(
+                                1 for f in os.scandir(parent)
+                                if f.is_file() and Path(f.name).suffix.lower() in VIDEO_EXTENSIONS
+                            )
+                        except Exception:
+                            video_siblings = 1
+                        if video_siblings <= 4:
+                            release = parent  # vrai dossier release (1 film)
+                        else:
+                            release = fpath   # dossier catégorie → fichier seul
 
                     if release in reported:
                         continue
