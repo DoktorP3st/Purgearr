@@ -13,9 +13,17 @@
 
 ### Aperçu
 
-| Page Regardés |
-|---|
-| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) |
+| 👁️ Page Regardés | 🚫 Suggestions — Jamais regardés |
+|---|---|
+| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) | ![Never watched](https://i.ibb.co/h1Y1vT7w/Capture-d-cran-2026-07-24-163441.png) |
+
+| 💀 Torrents morts (ratio 0) | 🗑️ Historique des suppressions |
+|---|---|
+| ![Dead seed](https://i.ibb.co/DfB94tz7/Capture-d-cran-2026-07-24-163523.png) | ![History](https://i.ibb.co/t98YjsP/Capture-d-cran-2026-07-24-163616.png) |
+
+| 📋 Journal événementiel | ✅ Modal de confirmation |
+|---|---|
+| ![Event log](https://i.ibb.co/7NWmHB7m/Capture-d-cran-2026-07-24-163649.png) | ![Confirm deletion](https://i.ibb.co/WCCbMbD/Capture-d-cran-2026-07-24-163748.png) |
 
 ### Fonctionnalités
 
@@ -140,9 +148,17 @@ MIT — utilise et adapte librement.
 
 ### Screenshots
 
-| Watched page |
-|---|
-| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) |
+| 👁️ Watched | 🚫 Suggestions — Never watched |
+|---|---|
+| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) | ![Never watched](https://i.ibb.co/h1Y1vT7w/Capture-d-cran-2026-07-24-163441.png) |
+
+| 💀 Dead torrents (ratio 0) | 🗑️ Deletion history |
+|---|---|
+| ![Dead seed](https://i.ibb.co/DfB94tz7/Capture-d-cran-2026-07-24-163523.png) | ![History](https://i.ibb.co/t98YjsP/Capture-d-cran-2026-07-24-163616.png) |
+
+| 📋 Event log | ✅ Confirm deletion modal |
+|---|---|
+| ![Event log](https://i.ibb.co/7NWmHB7m/Capture-d-cran-2026-07-24-163649.png) | ![Confirm deletion](https://i.ibb.co/WCCbMbD/Capture-d-cran-2026-07-24-163748.png) |
 
 ### Features
 
