@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.routes import router as dashboard_router
 from api.webhook import router as webhook_router
-from database import init_db
+from database import init_db, migrate_db
 from scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
@@ -19,6 +19,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    migrate_db()
     start_scheduler()
     yield
     stop_scheduler()

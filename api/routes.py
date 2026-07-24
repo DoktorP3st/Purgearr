@@ -64,6 +64,10 @@ def history(request: Request, db: Session = Depends(get_db)):
             item.services_list = json.loads(item.deleted_from or "[]")
         except Exception:
             item.services_list = []
+        try:
+            item.details_data = json.loads(item.details_json or "{}")
+        except Exception:
+            item.details_data = {}
     return templates.TemplateResponse(request=request, name="history.html", context={"items": items})
 
 
@@ -752,47 +756,7 @@ def api_scan_copies(
     # Transmission — TOUS les torrents correspondants (multi-tracker)
     debug_trans_comments: list = []
     try:
-        from urllib.parse import urlparse as _urlparse
-
-        def _parse_tracker(comment: str):
-            """Extrait (tracker_name, tracker_url) depuis le commentaire du torrent.
-            L'URL peut être n'importe où dans le texte (précédée de texte libre)."""
-            import re as _re
-            c = (comment or "").strip()
-            if not c:
-                return "", ""
-            try:
-                # Cherche la première URL http/https/udp dans le texte
-                m = _re.search(r'(https?://|udp://)\S+', c, _re.IGNORECASE)
-                if not m:
-                    return "", ""
-                url = m.group(0).rstrip('.,;)')  # retire ponctuation finale éventuelle
-                p = _urlparse(url)
-                domain = p.netloc.split(":")[0]  # supprime le port si présent
-                if not domain:
-                    return "", ""
-                # URL d'annonce ou protocole UDP → lien vers l'accueil du tracker
-                if url.lower().startswith("udp://") or "/announce" in p.path.lower():
-                    return domain, f"https://{domain}/"
-                # URL directe vers la page du torrent → utilise l'URL complète
-                return domain, url
-            except Exception:
-                return "", ""
-
-        def _get_tracker_info(t: dict):
-            """Cherche tracker dans comment, puis fallback sur la liste trackers."""
-            comment = (t.get("comment") or "").strip()
-            if comment:
-                tname, turl = _parse_tracker(comment)
-                if tname:
-                    return tname, turl
-            for tr_obj in (t.get("trackers") or []):
-                announce = (tr_obj.get("announce") or "").strip()
-                if announce:
-                    tname, turl = _parse_tracker(announce)
-                    if tname:
-                        return tname, turl
-            return "", ""
+        from services.transmission import get_tracker_info as _get_tracker_info
 
         tr = get_transmission()
         torrents = tr.find_all_by_path_or_name(file_path, series_title or item_title)
@@ -800,7 +764,6 @@ def api_scan_copies(
             torrents_info = []
             for t in torrents:
                 raw_comment = (t.get("comment") or "").strip()
-                # Debug : commentaire ou premier announce si commentaire vide
                 if raw_comment:
                     debug_entry = raw_comment[:100]
                 else:

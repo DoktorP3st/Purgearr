@@ -17,7 +17,8 @@ logger = logging.getLogger("purgearr.pipeline")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _save_history(db: Session, item: Dict, services: List[str], triggered_by: str, error: Optional[str] = None):
+def _save_history(db: Session, item: Dict, services: List[str], triggered_by: str,
+                  error: Optional[str] = None, details: Optional[Dict] = None):
     db.add(DeletionHistory(
         jellyfin_item_id=item.get("jellyfin_id"),
         item_type=item.get("type"),
@@ -27,26 +28,29 @@ def _save_history(db: Session, item: Dict, services: List[str], triggered_by: st
         deleted_from=json.dumps(services),
         triggered_by=triggered_by,
         error=error,
+        details_json=json.dumps(details) if details else None,
     ))
     db.commit()
 
 
-def _stop_all_torrents(file_path: str, title: str) -> List[str]:
-    """Cherche et stoppe TOUS les torrents correspondants (multi-tracker). Retourne la liste des noms."""
-    names: List[str] = []
+def _stop_all_torrents(file_path: str, title: str) -> List[Dict]:
+    """Cherche et stoppe TOUS les torrents correspondants. Retourne [{name, tracker_name, tracker_url}]."""
+    from services.transmission import get_tracker_info
+    results: List[Dict] = []
     try:
         tr = get_transmission()
         torrents = tr.find_all_by_path_or_name(file_path, title)
         if not torrents:
-            return names
+            return results
         for torrent in torrents:
             tr.stop_and_remove(torrent["id"], delete_data=False)
             logger.info(f"[Transmission] Torrent supprimé : {torrent['name']}")
-            names.append(torrent["name"])
+            tname, turl = get_tracker_info(torrent)
+            results.append({"name": torrent["name"], "tracker_name": tname, "tracker_url": turl})
     except Exception as e:
         logger.warning(f"[Transmission] Erreur pour '{title}': {e}")
         eventlog.warning("service", f"Transmission KO pour '{title}' : {e}")
-    return names
+    return results
 
 
 # ── Suppression film ──────────────────────────────────────────────────────────
@@ -83,16 +87,19 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         source_hash = hash_file(file_path)
         logger.debug(f"[Pipeline] Hash source calculé avant suppression : {source_hash[:12]}…")
 
+    # Taille du fichier source (avant que Radarr ne le supprime)
+    file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
+
     # 1. Transmission — stop TOUS les torrents seedant ce fichier (multi-tracker)
-    torrent_names = _stop_all_torrents(file_path, title)
-    if torrent_names:
+    torrents_info = _stop_all_torrents(file_path, title)
+    torrent_names = [t["name"] for t in torrents_info]
+    if torrents_info:
         result["services"].append("transmission")
-        logger.info(f"[Transmission] {len(torrent_names)} torrent(s) supprimé(s) pour : {title}")
+        logger.info(f"[Transmission] {len(torrents_info)} torrent(s) supprimé(s) pour : {title}")
 
     # 1.5 Sauvegarder dans l'index cleanup AVANT que Radarr supprime les fichiers
     try:
         from core.cleanup_store import add_entry
-        file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
         add_entry(
             item_title=title, item_type="Movie", source_hash=source_hash,
             file_path=file_path, jellyfin_item_id=item.get("jellyfin_id", ""),
@@ -144,14 +151,30 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
     except Exception as e:
         result["errors"].append(f"Jellyfin refresh: {e}")
 
-    _save_history(db, item, result["services"], triggered_by, "; ".join(result["errors"]) or None)
+    # Détails pour l'historique
+    from core.fileops import format_size
+    cleanup_result = result.get("cleanup") or {}
+    copies_size = cleanup_result.get("size_bytes", 0)
+    details = {
+        "file_path": file_path,
+        "file_size_bytes": file_size,
+        "file_size_human": format_size(file_size),
+        "torrents": torrents_info,
+        "copies_deleted": cleanup_result.get("copies_deleted", 0),
+        "copies_size_bytes": copies_size,
+        "copies_size_human": format_size(copies_size),
+        "total_freed_bytes": file_size + copies_size,
+        "total_freed_human": format_size(file_size + copies_size),
+    }
+    _save_history(db, item, result["services"], triggered_by,
+                  "; ".join(result["errors"]) or None, details=details)
 
     # Log événementiel
     if result["success"]:
         eventlog.info("deletion", f"Film supprimé : {title}",
                       triggered_by=triggered_by,
                       services=result["services"],
-                      copies_deleted=(result.get("cleanup") or {}).get("copies_deleted", 0))
+                      copies_deleted=cleanup_result.get("copies_deleted", 0))
     elif result["errors"]:
         eventlog.error("deletion", f"Échec suppression film : {title}",
                        triggered_by=triggered_by, errors=result["errors"])
@@ -192,16 +215,19 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
     if not source_hash and file_path and os.path.isfile(file_path):
         source_hash = hash_file(file_path)
 
+    # Taille du fichier source (avant que Sonarr ne le supprime)
+    file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
+
     # 1. Transmission — stop TOUS les torrents seedant cet épisode (multi-tracker)
-    torrent_names = _stop_all_torrents(file_path, series_title)
-    if torrent_names:
+    torrents_info = _stop_all_torrents(file_path, series_title)
+    torrent_names = [t["name"] for t in torrents_info]
+    if torrents_info:
         result["services"].append("transmission")
-        logger.info(f"[Transmission] {len(torrent_names)} torrent(s) supprimé(s) pour : {series_title}")
+        logger.info(f"[Transmission] {len(torrents_info)} torrent(s) supprimé(s) pour : {series_title}")
 
     # 1.5 Sauvegarder dans l'index cleanup AVANT que Sonarr supprime les fichiers
     try:
         from core.cleanup_store import add_entry
-        file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
         add_entry(
             item_title=title, item_type="Episode", source_hash=source_hash,
             file_path=file_path, series_title=series_title,
@@ -281,7 +307,23 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
     except Exception as e:
         result["errors"].append(f"Jellyfin refresh: {e}")
 
-    _save_history(db, item, result["services"], triggered_by, "; ".join(result["errors"]) or None)
+    # Détails pour l'historique
+    from core.fileops import format_size
+    cleanup_result = result.get("cleanup") or {}
+    copies_size = cleanup_result.get("size_bytes", 0)
+    details = {
+        "file_path": file_path,
+        "file_size_bytes": file_size,
+        "file_size_human": format_size(file_size),
+        "torrents": torrents_info,
+        "copies_deleted": cleanup_result.get("copies_deleted", 0),
+        "copies_size_bytes": copies_size,
+        "copies_size_human": format_size(copies_size),
+        "total_freed_bytes": file_size + copies_size,
+        "total_freed_human": format_size(file_size + copies_size),
+    }
+    _save_history(db, item, result["services"], triggered_by,
+                  "; ".join(result["errors"]) or None, details=details)
 
     # Log événementiel
     label = f"{series_title} — {title}"
@@ -290,7 +332,7 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
                       triggered_by=triggered_by,
                       services=result["services"],
                       delete_mode=delete_mode,
-                      copies_deleted=(result.get("cleanup") or {}).get("copies_deleted", 0))
+                      copies_deleted=cleanup_result.get("copies_deleted", 0))
     elif result["errors"]:
         eventlog.error("deletion", f"Échec suppression épisode : {label}",
                        triggered_by=triggered_by, errors=result["errors"])

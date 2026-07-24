@@ -1,7 +1,45 @@
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 import requests
+
+
+def parse_tracker(comment: str) -> Tuple[str, str]:
+    """Extrait (tracker_name, tracker_url) depuis un commentaire ou URL announce."""
+    c = (comment or "").strip()
+    if not c:
+        return "", ""
+    try:
+        m = re.search(r'(https?://|udp://)\S+', c, re.IGNORECASE)
+        if not m:
+            return "", ""
+        url = m.group(0).rstrip('.,;)')
+        p = urlparse(url)
+        domain = p.netloc.split(":")[0]
+        if not domain:
+            return "", ""
+        if url.lower().startswith("udp://") or "/announce" in p.path.lower():
+            return domain, f"https://{domain}/"
+        return domain, url
+    except Exception:
+        return "", ""
+
+
+def get_tracker_info(torrent: dict) -> Tuple[str, str]:
+    """Cherche le tracker dans le comment, puis fallback sur trackers[].announce."""
+    comment = (torrent.get("comment") or "").strip()
+    if comment:
+        tname, turl = parse_tracker(comment)
+        if tname:
+            return tname, turl
+    for tr_obj in (torrent.get("trackers") or []):
+        announce = (tr_obj.get("announce") or "").strip()
+        if announce:
+            tname, turl = parse_tracker(announce)
+            if tname:
+                return tname, turl
+    return "", ""
 
 TORRENT_FIELDS = ["id", "name", "status", "files", "downloadDir", "percentDone", "isFinished", "hashString", "comment", "trackers"]
 

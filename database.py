@@ -70,6 +70,7 @@ class DeletionHistory(Base):
     deleted_from = Column(Text)      # JSON: ["radarr", "transmission", "jellyfin"]
     triggered_by = Column(String)    # user_id ou "scheduler"
     error = Column(Text)             # message d'erreur si échec partiel
+    details_json = Column(Text)      # JSON: {file_path, file_size_bytes, file_size_human, torrents, copies_deleted, copies_size_human, total_freed_human}
 
 
 class LogEntry(Base):
@@ -86,6 +87,18 @@ class LogEntry(Base):
 
 def init_db():
     Base.metadata.create_all(engine)
+
+
+def migrate_db():
+    """Ajoute les colonnes manquantes aux tables existantes (idempotent)."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        for col_def in ["details_json TEXT"]:
+            try:
+                conn.execute(text(f"ALTER TABLE deletion_history ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
+                pass  # colonne déjà présente
 
 
 def get_db():

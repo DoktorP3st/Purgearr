@@ -23,17 +23,21 @@
       <tr>
         <th>Titre</th>
         <th>Type</th>
-        <th>Série</th>
         <th>Services</th>
-        <th>Déclenché par</th>
+        <th>Total libéré</th>
         <th>Date</th>
         <th>Statut</th>
       </tr>
     </thead>
     <tbody>
       {% for item in items %}
-      <tr>
-        <td>{{ item.item_title }}</td>
+      <tr onclick="openHistoryDetail({{ loop.index0 }})"
+          data-idx="{{ loop.index0 }}"
+          style="cursor:pointer" title="Cliquer pour voir le détail">
+        <td>
+          <span style="font-weight:500">{{ item.item_title }}</span>
+          {% if item.series_title %}<div style="font-size:11px;color:var(--text-muted)">{{ item.series_title }}</div>{% endif %}
+        </td>
         <td>
           {% if item.item_type == "Movie" %}
             <span class="badge badge-movie">Film</span>
@@ -41,7 +45,6 @@
             <span class="badge badge-episode">Épisode</span>
           {% endif %}
         </td>
-        <td class="text-muted">{{ item.series_title or "—" }}</td>
         <td>
           {% for s in item.services_list %}
             {% if "radarr" in s %}<span class="badge badge-radarr">Radarr</span> {% endif %}
@@ -50,7 +53,9 @@
             {% if "jellyfin" in s %}<span class="badge badge-jelly">Jellyfin</span> {% endif %}
           {% endfor %}
         </td>
-        <td class="text-muted text-sm">{{ item.triggered_by or "—" }}</td>
+        <td class="text-sm" style="color:var(--warning);font-weight:500">
+          {{ item.details_data.get('total_freed_human', '—') if item.details_data else '—' }}
+        </td>
         <td class="text-sm text-muted">{{ item.deleted_at.strftime("%d/%m/%Y %H:%M") }}</td>
         <td>
           {% if item.error %}
@@ -66,6 +71,83 @@
   {% else %}
   <div class="empty">Aucune suppression enregistrée</div>
   {% endif %}
+</div>
+
+<!-- ── Données historique (JSON embarqué pour le modal détail) ── -->
+<script>
+const HISTORY_DATA = {{ items | map(attribute='details_data') | list | tojson }};
+const HISTORY_META = [
+  {% for item in items %}
+  {
+    title:      {{ item.item_title | tojson }},
+    type:       {{ item.item_type  | tojson }},
+    series:     {{ (item.series_title or '') | tojson }},
+    date:       {{ item.deleted_at.strftime('%d/%m/%Y %H:%M') | tojson }},
+    services:   {{ item.services_list | tojson }},
+    error:      {{ (item.error or '') | tojson }},
+    triggered:  {{ (item.triggered_by or '') | tojson }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+</script>
+
+<!-- ── Modal détail suppression ── -->
+<div id="history-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);
+  z-index:1100;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;
+              padding:24px;width:660px;max-width:96vw;max-height:88vh;overflow-y:auto">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <h3 style="font-size:16px" id="hd-title">Détail</h3>
+      <button onclick="document.getElementById('history-detail-modal').style.display='none'"
+              class="btn btn-ghost btn-sm">✕</button>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--warning)" id="hd-source-size">—</div>
+        <div style="font-size:11px;color:var(--text-muted)">Fichier source</div>
+      </div>
+      <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--info)" id="hd-copies">—</div>
+        <div style="font-size:11px;color:var(--text-muted)">Copies supprimées</div>
+      </div>
+      <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--success)" id="hd-total">—</div>
+        <div style="font-size:11px;color:var(--text-muted)">Total libéré</div>
+      </div>
+    </div>
+
+    <!-- Liste services / torrents -->
+    <div style="background:var(--surface);border-radius:8px;padding:14px;
+                margin-bottom:16px;max-height:300px;overflow-y:auto">
+      <div style="font-size:10px;color:var(--text-muted);font-weight:600;
+                  text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">
+        Ce qui a été supprimé
+      </div>
+      <ul id="hd-list" style="list-style:none;padding:0"></ul>
+    </div>
+
+    <!-- Chemin fichier source -->
+    <div id="hd-path-section" style="display:none;font-size:11px;color:var(--text-muted);
+         font-family:monospace;background:var(--surface);padding:10px 12px;border-radius:6px;
+         word-break:break-all;margin-bottom:12px">
+      <span style="opacity:0.6">Fichier : </span><span id="hd-path"></span>
+    </div>
+
+    <!-- Erreur éventuelle -->
+    <div id="hd-error" style="display:none;padding:10px 14px;border-radius:6px;
+         background:rgba(245,158,11,0.1);border:1px solid var(--warning);
+         color:var(--warning);font-size:12px;margin-bottom:12px"></div>
+
+    <div style="text-align:right">
+      <button class="btn btn-ghost"
+              onclick="document.getElementById('history-detail-modal').style.display='none'">
+        Fermer
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Modal scanner les restes ── -->
@@ -112,6 +194,103 @@
 
 {% block scripts %}
 <script>
+// ── Modal détail historique ────────────────────────────────────────────────────
+function openHistoryDetail(idx) {
+  const meta = HISTORY_META[idx] || {};
+  const det  = HISTORY_DATA[idx] || {};
+
+  const label = meta.series ? `${meta.series} — ${meta.title}` : meta.title;
+  document.getElementById('hd-title').textContent = (meta.type === 'Movie' ? '🎬 ' : '📺 ') + label;
+
+  document.getElementById('hd-source-size').textContent = det.file_size_human  || '—';
+  document.getElementById('hd-copies').textContent      = det.copies_deleted != null ? det.copies_deleted : '—';
+  document.getElementById('hd-total').textContent       = det.total_freed_human || '—';
+
+  // Chemin source
+  const pathSec = document.getElementById('hd-path-section');
+  if (det.file_path) {
+    document.getElementById('hd-path').textContent = det.file_path;
+    pathSec.style.display = 'block';
+  } else {
+    pathSec.style.display = 'none';
+  }
+
+  // Erreur
+  const errEl = document.getElementById('hd-error');
+  if (meta.error) {
+    errEl.textContent = '⚠ ' + meta.error;
+    errEl.style.display = 'block';
+  } else {
+    errEl.style.display = 'none';
+  }
+
+  // Liste services / torrents
+  const list = document.getElementById('hd-list');
+  list.innerHTML = '';
+  const services = meta.services || [];
+  const torrents = det.torrents || [];
+  const isMovie  = meta.type === 'Movie';
+
+  if (services.includes('radarr')) {
+    _addHistoryRow(list, 'Radarr', 'Suppression du film + liste d\'exclusion', 'var(--info)', '📡', null);
+  }
+  if (services.includes('sonarr')) {
+    _addHistoryRow(list, 'Sonarr', 'Suppression épisode/série + liste d\'exclusion', 'var(--info)', '📡', null);
+  }
+  if (torrents.length > 0) {
+    torrents.forEach(t => {
+      const label  = t.tracker_name ? `Transmission — ${t.tracker_name}` : `Transmission — ${t.name}`;
+      const detail = t.name + ' · Seeding arrêté + torrent supprimé';
+      _addHistoryRow(list, label, detail, 'var(--info)', '⬇', t.tracker_url || null);
+    });
+  } else if (services.includes('transmission')) {
+    _addHistoryRow(list, 'Transmission', 'Seeding arrêté + torrent supprimé', 'var(--info)', '⬇', null);
+  }
+  if (services.includes('jellyfin')) {
+    _addHistoryRow(list, 'Jellyfin', 'Bibliothèque rafraîchie', 'var(--info)', '🎬', null);
+  }
+  if (det.copies_deleted > 0) {
+    _addHistoryRow(
+      list,
+      `${det.copies_deleted} copie(s) supprimée(s)`,
+      `${det.copies_size_human} libérés dans les chemins additionnels`,
+      'var(--success)', '🗑️', null
+    );
+  }
+  if (list.children.length === 0) {
+    list.innerHTML = '<li style="color:var(--text-muted);font-size:12px;padding:8px 0">Aucun détail disponible (suppression ancienne)</li>';
+  }
+
+  document.getElementById('history-detail-modal').style.display = 'flex';
+}
+
+function _addHistoryRow(ul, path, detail, color, icon, href) {
+  const li = document.createElement('li');
+  li.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start';
+  const pathHtml = `<div style="font-family:monospace;font-size:11px;color:${color};word-break:break-all">
+    ${esc(path)}${href ? '<span style="opacity:0.45;font-size:10px;margin-left:4px">↗</span>' : ''}
+  </div>`;
+  const inner = `
+    <span style="flex-shrink:0;font-size:14px;margin-top:1px">${icon}</span>
+    <div style="min-width:0;flex:1">
+      ${pathHtml}
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(detail)}</div>
+    </div>`;
+  if (href) {
+    const a = document.createElement('a');
+    a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.style.cssText = 'display:flex;gap:10px;align-items:flex-start;flex:1;text-decoration:none;color:inherit;cursor:pointer;border-radius:4px;transition:background 0.15s';
+    a.innerHTML = inner;
+    a.addEventListener('mouseover', () => { a.style.background = 'rgba(255,255,255,0.05)'; });
+    a.addEventListener('mouseout',  () => { a.style.background = ''; });
+    li.appendChild(a);
+  } else {
+    li.innerHTML = inner;
+  }
+  ul.appendChild(li);
+}
+
+// ── Modal scanner les restes ──────────────────────────────────────────────────
 let _remainsData = [];
 
 async function openRemainsModal() {
@@ -140,7 +319,6 @@ function renderRemainsResults(data) {
     summary.innerHTML = '<span style="color:var(--success)">✓ Aucun reste détecté — tout est propre</span>';
     document.getElementById('rm-purge-btn').style.display = 'none';
   } else {
-    const totalSize = data.items.reduce((s, i) => s + i.copies.reduce((a, c) => a + c.size_bytes, 0), 0);
     summary.innerHTML = `<span style="color:var(--warning)">⚠ ${data.found} item(s) avec des restes détectés</span>`;
     document.getElementById('rm-purge-btn').style.display = 'inline-flex';
   }

@@ -89,11 +89,11 @@
         </div>
         <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:20px;font-weight:700;color:var(--warning)" id="dc-total">—</div>
-          <div style="font-size:11px;color:var(--text-muted)">Espace à libérer</div>
+          <div style="font-size:11px;color:var(--text-muted)">Fichier source</div>
         </div>
         <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:20px;font-weight:700;color:var(--danger)" id="dc-files-total">—</div>
-          <div style="font-size:11px;color:var(--text-muted)">Fichiers</div>
+          <div style="font-size:11px;color:var(--text-muted)">Total libéré</div>
         </div>
       </div>
 
@@ -293,10 +293,9 @@ function _showScanResults(label, scan) {
   }
 
   // Compteurs
-  const totalFiles = (scan.copies || []).reduce((s, c) => s + (c.file_count || 0), 0);
-  document.getElementById('dc-count').textContent      = scan.total_copies  || '0';
-  document.getElementById('dc-total').textContent      = scan.total_size_human || '—';
-  document.getElementById('dc-files-total').textContent = totalFiles || '—';
+  document.getElementById('dc-count').textContent      = scan.total_copies   || '0';
+  document.getElementById('dc-total').textContent      = scan.source_size_human || '—';
+  document.getElementById('dc-files-total').textContent = scan.total_freed_human || scan.source_size_human || '—';
 
   // Liste des éléments à supprimer
   const list = document.getElementById('dc-list');

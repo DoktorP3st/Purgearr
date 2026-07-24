@@ -111,11 +111,20 @@ def scan_copies_smart(
             if known_hash:
                 break
 
+    # Taille du fichier/dossier source (pour affichage dans la modal)
+    source_size_bytes = 0
+    if known_path and (os.path.isfile(known_path) or os.path.isdir(known_path)):
+        source_size_bytes, _ = _calc_size(known_path)
+
     if not known_hash:
         return {
             "title": title, "known_path": known_path, "source_hash": "",
+            "source_size_bytes": source_size_bytes,
+            "source_size_human": format_size(source_size_bytes),
             "strategy": "indisponible", "copies": [], "total_copies": 0,
             "total_size_bytes": 0, "total_size_human": format_size(0),
+            "total_freed_bytes": source_size_bytes,
+            "total_freed_human": format_size(source_size_bytes),
             "has_inode_match": False, "skipped": True,
         }
 
@@ -210,17 +219,22 @@ def scan_copies_smart(
             logger.warning("[Scan] Accès refusé à %s : %s", base, e)
 
     total = sum(e["size_bytes"] for e in found)
+    total_freed = source_size_bytes + total
     return {
-        "title":            title,
-        "known_path":       known_path,
-        "source_hash":      known_hash,
-        "strategy":         strategy,
-        "copies":           found,
-        "total_copies":     len(found),
-        "total_size_bytes": total,
-        "total_size_human": format_size(total),
-        "has_inode_match":  any(e["is_hardlink"] for e in found),
-        "skipped":          False,
+        "title":              title,
+        "known_path":         known_path,
+        "source_hash":        known_hash,
+        "source_size_bytes":  source_size_bytes,
+        "source_size_human":  format_size(source_size_bytes),
+        "strategy":           strategy,
+        "copies":             found,
+        "total_copies":       len(found),
+        "total_size_bytes":   total,
+        "total_size_human":   format_size(total),
+        "total_freed_bytes":  total_freed,
+        "total_freed_human":  format_size(total_freed),
+        "has_inode_match":    any(e["is_hardlink"] for e in found),
+        "skipped":            False,
     }
 
 
