@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from core import eventlog
 from core.pipeline import handle_watch_event
 from database import get_db
 from services.factory import get_jellyfin
@@ -54,17 +55,20 @@ async def jellyfin_webhook(request: Request, db: Session = Depends(get_db)):
     )
 
     # Récupérer les détails complets depuis l'API Jellyfin (pour le Path et les ProviderIds)
+    item_details: Dict[str, Any] = {}
+    provider_ids: Dict[str, Any] = {}
+    file_path = ""
+    all_users = [user_id]
     try:
         jf = get_jellyfin()
-        item_details = jf.get_item(jellyfin_item_id, user_id)
-        provider_ids = item_details.get("ProviderIds", {})
-        file_path = item_details.get("Path", "")
-        all_users = [u["Id"] for u in jf.get_users()]
+        item_details = jf.get_item(jellyfin_item_id, user_id) or {}
+        provider_ids = item_details.get("ProviderIds", {}) or {}
+        file_path = item_details.get("Path", "") or ""
+        all_users = [u["Id"] for u in jf.get_users()] or [user_id]
     except Exception as e:
         logger.warning(f"[Webhook] Impossible de récupérer les détails Jellyfin: {e}")
-        provider_ids = {}
-        file_path = ""
-        all_users = [user_id]
+        eventlog.warning("webhook", f"Détails Jellyfin indisponibles : {e}",
+                         jellyfin_id=jellyfin_item_id, user=user_name)
 
     item_title = payload.get("Name") or item_details.get("Name", "?")
     series_title = payload.get("SeriesName") or item_details.get("SeriesName")

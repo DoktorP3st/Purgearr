@@ -72,6 +72,18 @@ class DeletionHistory(Base):
     error = Column(Text)             # message d'erreur si échec partiel
 
 
+class LogEntry(Base):
+    """Journal événementiel catégorisé (deletion, watch, protection, sync, etc.)."""
+    __tablename__ = "event_logs"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    level = Column(String, index=True)     # info | warning | error
+    category = Column(String, index=True)  # deletion | watch | queue | protection | sync | scheduler | webhook | service | config | error
+    message = Column(Text)
+    context = Column(Text)                 # JSON facultatif (métadonnées supplémentaires)
+
+
 def init_db():
     Base.metadata.create_all(engine)
 

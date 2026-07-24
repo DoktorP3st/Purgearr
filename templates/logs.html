@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% set active = "logs" %}
+
+{% block title %} — Logs{% endblock %}
+{% block page_title %}Journal événementiel{% endblock %}
+
+{% block topbar_actions %}
+<div style="display:flex;gap:8px;align-items:center">
+  <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+    <input type="checkbox" id="auto-refresh"> auto-refresh 10s
+  </label>
+  <button class="btn btn-ghost" onclick="refreshLogs()" style="font-size:13px">
+    🔄 Rafraîchir
+  </button>
+  <button class="btn btn-danger" onclick="purgeLogs()" style="font-size:13px">
+    🗑️ Vider
+  </button>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if not logs_enabled %}
+<div class="section" style="background:rgba(245,158,11,0.1);border-color:var(--warning)">
+  <div style="padding:12px 16px;color:var(--warning);font-size:13px">
+    ⚠ Le journal est <b>désactivé</b> — activez-le dans
+    <a href="/settings" style="color:var(--warning);text-decoration:underline">Paramètres</a>
+    pour capturer les événements.
+  </div>
+</div>
+{% endif %}
+
+<!-- Statistiques -->
+<div class="section">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
+    <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--accent)" id="stat-total">{{ stats.total }}</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Total</div>
+    </div>
+    <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--danger)" id="stat-errors">{{ stats.by_level.error }}</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Erreurs</div>
+    </div>
+    <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--warning)" id="stat-warnings">{{ stats.by_level.warning }}</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Warnings</div>
+    </div>
+    <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--info)" id="stat-infos">{{ stats.by_level.info }}</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Infos</div>
+    </div>
+  </div>
+</div>
+
+<!-- Filtres -->
+<div class="section">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <select id="f-category" onchange="refreshLogs()"
+            style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);
+                   color:var(--text);border-radius:6px;font-size:13px;min-width:160px">
+      <option value="">Toutes catégories</option>
+      {% for key, label in categories.items() %}
+      <option value="{{ key }}">{{ label }} ({{ stats.by_category.get(key, 0) }})</option>
+      {% endfor %}
+    </select>
+
+    <select id="f-level" onchange="refreshLogs()"
+            style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);
+                   color:var(--text);border-radius:6px;font-size:13px;min-width:130px">
+      <option value="">Tous niveaux</option>
+      {% for lvl in levels %}
+      <option value="{{ lvl }}">{{ lvl }}</option>
+      {% endfor %}
+    </select>
+
+    <input type="text" id="f-search" placeholder="Rechercher dans le message…"
+           oninput="debouncedRefresh()"
+           style="flex:1;min-width:200px;padding:8px 12px;background:var(--surface);
+                  border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:13px">
+
+    <span id="f-count" style="font-size:12px;color:var(--text-muted)"></span>
+  </div>
+</div>
+
+<!-- Timeline -->
+<div class="section">
+  <div id="logs-list" style="display:flex;flex-direction:column;gap:4px">
+    <div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
+      Chargement…
+    </div>
+  </div>
+
+  <div id="logs-pagination" style="display:flex;justify-content:center;gap:8px;margin-top:16px"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CATEGORY_LABELS = {{ categories | tojson }};
+const CATEGORY_COLORS = {
+  deletion:   'var(--danger)',
+  watch:      'var(--info)',
+  queue:      'var(--accent)',
+  protection: 'var(--warning)',
+  sync:       'var(--info)',
+  scheduler:  'var(--text-muted)',
+  webhook:    'var(--info)',
+  service:    'var(--text-muted)',
+  config:     'var(--accent)',
+  error:      'var(--danger)',
+};
+const CATEGORY_ICONS = {
+  deletion:   '🗑️',
+  watch:      '👁️',
+  queue:      '📥',
+  protection: '🛡️',
+  sync:       '🔄',
+  scheduler:  '⏱️',
+  webhook:    '📨',
+  service:    '🔌',
+  config:     '⚙️',
+  error:      '💥',
+};
+const LEVEL_COLORS = {
+  info:    'var(--info)',
+  warning: 'var(--warning)',
+  error:   'var(--danger)',
+};
+
+let currentOffset = 0;
+const PAGE_SIZE = 100;
+let _refreshTimer = null;
+let _autoTimer = null;
+
+function debouncedRefresh() {
+  clearTimeout(_refreshTimer);
+  _refreshTimer = setTimeout(() => { currentOffset = 0; refreshLogs(); }, 300);
+}
+
+async function refreshLogs() {
+  const level    = document.getElementById('f-level').value;
+  const category = document.getElementById('f-category').value;
+  const search   = document.getElementById('f-search').value.trim();
+
+  const params = new URLSearchParams({ limit: PAGE_SIZE, offset: currentOffset });
+  if (level)    params.append('level', level);
+  if (category) params.append('category', category);
+  if (search)   params.append('search', search);
+
+  try {
+    const res  = await fetch('/api/logs?' + params);
+    const data = await res.json();
+    renderLogs(data);
+    refreshStats();
+  } catch (e) {
+    document.getElementById('logs-list').innerHTML =
+      '<div style="color:var(--danger);padding:16px;text-align:center">✗ Erreur chargement</div>';
+  }
+}
+
+async function refreshStats() {
+  try {
+    const res = await fetch('/api/logs/stats');
+    const s = await res.json();
+    document.getElementById('stat-total').textContent    = s.total;
+    document.getElementById('stat-errors').textContent   = s.by_level.error || 0;
+    document.getElementById('stat-warnings').textContent = s.by_level.warning || 0;
+    document.getElementById('stat-infos').textContent    = s.by_level.info || 0;
+    // Refresh dropdown counts
+    const catSel = document.getElementById('f-category');
+    const current = catSel.value;
+    catSel.innerHTML = '<option value="">Toutes catégories</option>' +
+      Object.entries(CATEGORY_LABELS).map(([k, l]) =>
+        `<option value="${k}">${l} (${s.by_category[k] || 0})</option>`
+      ).join('');
+    catSel.value = current;
+  } catch {}
+}
+
+function renderLogs(data) {
+  const list = document.getElementById('logs-list');
+  const countEl = document.getElementById('f-count');
+  countEl.textContent = `${data.total} entrée(s)`;
+
+  if (!data.entries.length) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">Aucun log</div>';
+    document.getElementById('logs-pagination').innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = data.entries.map(renderRow).join('');
+  renderPagination(data);
+}
+
+function renderRow(e) {
+  const cat = e.category || 'error';
+  const catLabel = CATEGORY_LABELS[cat] || cat;
+  const catColor = CATEGORY_COLORS[cat] || 'var(--text-muted)';
+  const catIcon  = CATEGORY_ICONS[cat] || '•';
+  const lvlColor = LEVEL_COLORS[e.level] || 'var(--text-muted)';
+  const ts = e.timestamp ? formatTs(e.timestamp) : '';
+  const ctx = e.context ? renderContext(e.context) : '';
+
+  return `
+    <div style="display:flex;gap:12px;padding:10px 12px;background:var(--surface);
+                border-left:3px solid ${lvlColor};border-radius:6px;font-size:12px">
+      <div style="flex-shrink:0;color:var(--text-muted);font-family:monospace;font-size:11px;
+                  min-width:130px;padding-top:1px">
+        ${ts}
+      </div>
+      <div style="flex-shrink:0;min-width:110px">
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+                     border-radius:4px;background:rgba(255,255,255,0.05);
+                     font-size:10px;text-transform:uppercase;letter-spacing:0.4px;
+                     color:${catColor};font-weight:600">
+          ${catIcon} ${catLabel}
+        </span>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="color:var(--text);word-break:break-word">${esc(e.message || '')}</div>
+        ${ctx}
+      </div>
+    </div>`;
+}
+
+function renderContext(ctx) {
+  if (ctx === null || ctx === undefined) return '';
+  if (typeof ctx === 'string') return `<div style="color:var(--text-muted);font-size:11px;margin-top:2px">${esc(ctx)}</div>`;
+  const parts = Object.entries(ctx).map(([k, v]) => {
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return `<span style="color:var(--text-muted);margin-right:12px">
+      <span style="opacity:0.7">${esc(k)}=</span><span>${esc(val)}</span>
+    </span>`;
+  });
+  if (!parts.length) return '';
+  return `<div style="font-size:11px;margin-top:3px;font-family:monospace">${parts.join('')}</div>`;
+}
+
+function renderPagination(data) {
+  const pg = document.getElementById('logs-pagination');
+  const total = data.total;
+  if (total <= PAGE_SIZE) { pg.innerHTML = ''; return; }
+  const cur = Math.floor(currentOffset / PAGE_SIZE) + 1;
+  const max = Math.ceil(total / PAGE_SIZE);
+
+  const prev = currentOffset > 0
+    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset - PAGE_SIZE})">‹ Précédent</button>`
+    : `<button class="btn btn-ghost btn-sm" disabled>‹ Précédent</button>`;
+  const next = currentOffset + PAGE_SIZE < total
+    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset + PAGE_SIZE})">Suivant ›</button>`
+    : `<button class="btn btn-ghost btn-sm" disabled>Suivant ›</button>`;
+
+  pg.innerHTML = `${prev}
+    <span style="padding:6px 12px;color:var(--text-muted);font-size:12px">Page ${cur} / ${max}</span>
+    ${next}`;
+}
+
+function goPage(off) {
+  currentOffset = Math.max(0, off);
+  refreshLogs();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function formatTs(iso) {
+  const d = new Date(iso + 'Z');
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+async function purgeLogs() {
+  if (!confirm('Vider tout le journal ?')) return;
+  const res = await fetch('/api/logs/purge', { method: 'POST' });
+  const data = await res.json();
+  showToast(`✓ ${data.deleted} entrées supprimées`, 'success');
+  currentOffset = 0;
+  refreshLogs();
+}
+
+// Auto-refresh
+document.getElementById('auto-refresh').addEventListener('change', (e) => {
+  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
+  if (e.target.checked) {
+    _autoTimer = setInterval(refreshLogs, 10000);
+  }
+});
+
+refreshLogs();
+</script>
+{% endblock %}

@@ -82,15 +82,20 @@ def scan_copies_smart(
     known_inode  = None
     known_real   = ""
     known_is_dir = False
+    known_size: Optional[int] = None
 
     if known_path and os.path.isfile(known_path):
         known_real  = os.path.realpath(known_path)
         known_inode = _inode_key(known_path)
         known_hash  = _file_hash(known_path)
+        try:
+            known_size = os.path.getsize(known_path)
+        except OSError:
+            known_size = None
     elif known_path and os.path.isdir(known_path):
         known_real   = os.path.realpath(known_path)
         known_is_dir = True
-        # Premier fichier vidéo dans le dossier — sert de référence inode/hash
+        # Premier fichier vidéo dans le dossier — sert de référence inode/hash/taille
         for _r, _d, _f in os.walk(known_path):
             for _fn in sorted(_f):
                 if Path(_fn).suffix.lower() in VIDEO_EXTENSIONS:
@@ -98,6 +103,10 @@ def scan_copies_smart(
                     known_inode = _inode_key(_fp)
                     if not known_hash:
                         known_hash = _file_hash(_fp)
+                    try:
+                        known_size = os.path.getsize(_fp)
+                    except OSError:
+                        known_size = None
                     break
             if known_hash:
                 break
@@ -148,8 +157,16 @@ def scan_copies_smart(
                     match_method: Optional[str] = None
                     if known_inode and _inode_key(fpath) == known_inode:
                         match_method = "inode"
-                    elif _file_hash(fpath) == known_hash:
-                        match_method = "hash"
+                    else:
+                        # Skip hash si taille différente (rapide, évite d'ouvrir le fichier)
+                        if known_size is not None:
+                            try:
+                                if os.path.getsize(fpath) != known_size:
+                                    continue
+                            except OSError:
+                                continue
+                        if _file_hash(fpath) == known_hash:
+                            match_method = "hash"
 
                     if not match_method:
                         continue

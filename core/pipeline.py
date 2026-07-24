@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from config import get_extra_paths, get_mode, get_rules, get_scan_paths, resolve_real_path
+from core import eventlog
 from core.fileops import hash_file, run_cleanup
 from database import DeletionHistory, DeletionQueue, WatchEvent
 from services.factory import get_jellyfin, get_radarr, get_sonarr, get_transmission
@@ -44,6 +45,7 @@ def _stop_all_torrents(file_path: str, title: str) -> List[str]:
             names.append(torrent["name"])
     except Exception as e:
         logger.warning(f"[Transmission] Erreur pour '{title}': {e}")
+        eventlog.warning("service", f"Transmission KO pour '{title}' : {e}")
     return names
 
 
@@ -68,9 +70,12 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
             logger.info(f"[Pipeline] Film en favori, suppression bloquée : {title}")
             result["errors"].append("Item en favori Jellyfin — suppression bloquée")
             result["blocked_by_favorite"] = True
+            eventlog.warning("protection", f"Film en favori — suppression bloquée : {title}",
+                             triggered_by=triggered_by, jellyfin_id=item.get("jellyfin_id"))
             return result
     except Exception as e:
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
+        eventlog.warning("service", f"Jellyfin favoris indisponibles : {e}", title=title)
 
     # 0.5 Empreinte SHA-256 AVANT suppression — pour retrouver les copies par hash
     # (si source_hash fourni par le scan manuel, on l'utilise directement)
@@ -100,11 +105,16 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
     # 2. Radarr — supprime le film, les fichiers, et bloque le re-téléchargement
     try:
         radarr = get_radarr()
-        movie = (
-            radarr.find_by_tmdb_id(int(item["tmdb_id"])) if item.get("tmdb_id") else None
-            or (radarr.find_by_imdb_id(item["imdb_id"]) if item.get("imdb_id") else None)
-            or radarr.find_by_title(title)
-        )
+        movie = None
+        if item.get("tmdb_id"):
+            try:
+                movie = radarr.find_by_tmdb_id(int(item["tmdb_id"]))
+            except (TypeError, ValueError):
+                movie = None
+        if not movie and item.get("imdb_id"):
+            movie = radarr.find_by_imdb_id(item["imdb_id"])
+        if not movie:
+            movie = radarr.find_by_title(title)
         if movie:
             radarr.delete(
                 movie["id"],
@@ -135,6 +145,17 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         result["errors"].append(f"Jellyfin refresh: {e}")
 
     _save_history(db, item, result["services"], triggered_by, "; ".join(result["errors"]) or None)
+
+    # Log événementiel
+    if result["success"]:
+        eventlog.info("deletion", f"Film supprimé : {title}",
+                      triggered_by=triggered_by,
+                      services=result["services"],
+                      copies_deleted=(result.get("cleanup") or {}).get("copies_deleted", 0))
+    elif result["errors"]:
+        eventlog.error("deletion", f"Échec suppression film : {title}",
+                       triggered_by=triggered_by, errors=result["errors"])
+
     return result
 
 
@@ -160,9 +181,12 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
             logger.info(f"[Pipeline] Épisode en favori, suppression bloquée : {title}")
             result["errors"].append("Item en favori Jellyfin — suppression bloquée")
             result["blocked_by_favorite"] = True
+            eventlog.warning("protection", f"Épisode en favori — suppression bloquée : {series_title} — {title}",
+                             triggered_by=triggered_by, jellyfin_id=item.get("jellyfin_id"))
             return result
     except Exception as e:
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
+        eventlog.warning("service", f"Jellyfin favoris indisponibles : {e}", title=title)
 
     # 0.5 Empreinte SHA-256 AVANT suppression
     if not source_hash and file_path and os.path.isfile(file_path):
@@ -191,10 +215,14 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
     # 2. Sonarr
     try:
         sonarr = get_sonarr()
-        series = (
-            sonarr.find_by_tvdb_id(int(item["tvdb_id"])) if item.get("tvdb_id") else None
-            or sonarr.find_by_title(series_title)
-        )
+        series = None
+        if item.get("tvdb_id"):
+            try:
+                series = sonarr.find_by_tvdb_id(int(item["tvdb_id"]))
+            except (TypeError, ValueError):
+                series = None
+        if not series:
+            series = sonarr.find_by_title(series_title)
 
         if not series:
             logger.warning(f"[Sonarr] Série introuvable : {series_title}")
@@ -254,6 +282,19 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
         result["errors"].append(f"Jellyfin refresh: {e}")
 
     _save_history(db, item, result["services"], triggered_by, "; ".join(result["errors"]) or None)
+
+    # Log événementiel
+    label = f"{series_title} — {title}"
+    if result["success"]:
+        eventlog.info("deletion", f"Épisode supprimé : {label}",
+                      triggered_by=triggered_by,
+                      services=result["services"],
+                      delete_mode=delete_mode,
+                      copies_deleted=(result.get("cleanup") or {}).get("copies_deleted", 0))
+    elif result["errors"]:
+        eventlog.error("deletion", f"Échec suppression épisode : {label}",
+                       triggered_by=triggered_by, errors=result["errors"])
+
     return result
 
 
@@ -273,14 +314,19 @@ def process_queue(db: Session):
 
     logger.info(f"[Queue] {len(pending)} item(s) à traiter")
     jf = get_jellyfin()
+    try:
+        admin_uid = (jf.get_users() or [{}])[0].get("Id")
+    except Exception as e:
+        logger.warning(f"[Queue] Impossible de récupérer les users Jellyfin: {e}")
+        admin_uid = None
 
     for queue_item in pending:
         queue_item.status = "processing"
         db.commit()
 
         try:
-            jf_item = jf.get_item(queue_item.jellyfin_item_id)
-            provider_ids = jf_item.get("ProviderIds", {})
+            jf_item = jf.get_item(queue_item.jellyfin_item_id, user_id=admin_uid) or {}
+            provider_ids = jf_item.get("ProviderIds", {}) or {}
 
             raw_path = queue_item.file_path or jf_item.get("Path", "")
             item = {
@@ -305,9 +351,15 @@ def process_queue(db: Session):
 
         except Exception as e:
             logger.error(f"[Queue] Erreur sur '{queue_item.item_title}': {e}")
+            eventlog.error("queue", f"Erreur traitement queue : {queue_item.item_title}", error=str(e))
+            db.rollback()
             queue_item.status = "failed"
 
-        db.commit()
+        try:
+            db.commit()
+        except Exception as e:
+            logger.error(f"[Queue] Commit final échoué pour '{queue_item.item_title}': {e}")
+            db.rollback()
 
 
 # ── Enregistrement d'un événement de visionnage ───────────────────────────────
@@ -338,6 +390,8 @@ def handle_watch_event(
     # 1. Vérifier la liste de protection
     if is_protected(jellyfin_item_id, item_title):
         logger.info(f"[Event] Item protégé ignoré : {item_title}")
+        eventlog.info("protection", f"Visionnage ignoré (protégé) : {item_title}",
+                      user=user_name, jellyfin_id=jellyfin_item_id)
         return
 
     # 2. Vérifier le seuil de visionnage
@@ -371,6 +425,12 @@ def handle_watch_event(
         db.commit()
 
     logger.info(f"[Event] Visionnage enregistré : {user_name} — {item_title} ({percentage:.0f}%)")
+    eventlog.info(
+        "watch",
+        f"{user_name} — {item_title} vu à {percentage:.0f}%",
+        user=user_name, item_type=item_type,
+        series=series_title, percentage=round(percentage, 1),
+    )
 
     # 4. Mode manuel → on enregistre uniquement, pas de suppression automatique
     if get_mode() != "auto":
@@ -381,6 +441,7 @@ def handle_watch_event(
         return
 
     # 6. Ajouter à la queue
+    scheduled = scheduled_time(item_type)
     db.add(DeletionQueue(
         jellyfin_item_id=jellyfin_item_id,
         item_type=item_type,
@@ -390,7 +451,9 @@ def handle_watch_event(
         tvdb_id=tvdb_id,
         imdb_id=imdb_id,
         file_path=file_path,
-        scheduled_at=scheduled_time(item_type),
+        scheduled_at=scheduled,
     ))
     db.commit()
     logger.info(f"[Queue] Ajouté à la queue de suppression : {item_title}")
+    eventlog.info("queue", f"Ajouté à la queue : {item_title}",
+                  scheduled_at=scheduled.isoformat(), triggered_by=user_name)

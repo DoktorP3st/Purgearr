@@ -11,6 +11,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, get_scheduler_config, load_config, resolve_real_path, save_config, save_protected
+from core import eventlog
 from core.pipeline import delete_episode, delete_movie, process_queue
 from core.sync import sync_watch_data
 from scheduler import INTERVAL_OPTIONS, restart_jobs
@@ -71,6 +72,10 @@ def history(request: Request, db: Session = Depends(get_db)):
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     cfg = get_config()
+    cfg.setdefault("logs", {})
+    cfg["logs"].setdefault("enabled", True)
+    cfg["logs"].setdefault("retention_days", 30)
+    cfg["logs"].setdefault("max_entries", 10000)
     try:
         jf_users = get_jellyfin().get_users()
     except Exception:
@@ -116,6 +121,9 @@ def settings_save(
     extra_paths_raw: str = Form(""),
     library_root_movies: str = Form(""),
     library_root_series: str = Form(""),
+    logs_enabled: bool = Form(False),
+    logs_retention_days: int = Form(30),
+    logs_max_entries: int = Form(10000),
 ):
     cfg = get_config()
     users_list       = [u.strip() for u in watched_users.splitlines() if u.strip()]
@@ -157,9 +165,16 @@ def settings_save(
     }
     cfg["scheduler"]    = {"queue_interval_minutes": queue_interval, "scan_interval_minutes": scan_interval}
     cfg["extra_paths"]  = extra_paths_list
+    cfg["logs"] = {
+        "enabled":        logs_enabled,
+        "retention_days": max(1, int(logs_retention_days)),
+        "max_entries":    max(100, int(logs_max_entries)),
+    }
 
     save_config(cfg)
     restart_jobs()
+    eventlog.info("config", "Paramètres enregistrés",
+                  mode=current_mode, scheduler={"queue": queue_interval, "scan": scan_interval})
 
     try:
         jf_users = get_jellyfin().get_users()
@@ -242,22 +257,32 @@ def protected_add(title: str = Form(""), jellyfin_id: str = Form("")):
     p = get_protected()
     p.setdefault("titles", [])
     p.setdefault("jellyfin_ids", [])
+    added = []
     if title and title not in p["titles"]:
         p["titles"].append(title)
+        added.append(f"titre={title}")
     if jellyfin_id and jellyfin_id not in p["jellyfin_ids"]:
         p["jellyfin_ids"].append(jellyfin_id)
+        added.append(f"id={jellyfin_id}")
     save_protected(p)
+    if added:
+        eventlog.info("protection", f"Whitelist + {' / '.join(added)}")
     return RedirectResponse("/protected", status_code=303)
 
 
 @router.post("/protected/remove")
 def protected_remove(title: str = Form(""), jellyfin_id: str = Form("")):
     p = get_protected()
+    removed = []
     if title in p.get("titles", []):
         p["titles"].remove(title)
+        removed.append(f"titre={title}")
     if jellyfin_id in p.get("jellyfin_ids", []):
         p["jellyfin_ids"].remove(jellyfin_id)
+        removed.append(f"id={jellyfin_id}")
     save_protected(p)
+    if removed:
+        eventlog.info("protection", f"Whitelist − {' / '.join(removed)}")
     return RedirectResponse("/protected", status_code=303)
 
 
@@ -291,8 +316,10 @@ def api_transmission_orphans():
 def api_transmission_remove(torrent_id: int = Form(...)):
     try:
         get_transmission().stop_and_remove(torrent_id, delete_data=False)
+        eventlog.info("deletion", f"Torrent orphelin supprimé (id={torrent_id})")
         return JSONResponse({"success": True})
     except Exception as e:
+        eventlog.error("service", f"Suppression torrent id={torrent_id} KO : {e}")
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
@@ -308,8 +335,12 @@ def api_remove_all_orphans():
                 removed += 1
             except Exception:
                 failed += 1
+        level = "warning" if failed else "info"
+        eventlog.log_event(level, "deletion",
+                           f"Purge orphelins Transmission : {removed} supprimés, {failed} échec(s)")
         return JSONResponse({"success": True, "removed": removed, "failed": failed})
     except Exception as e:
+        eventlog.error("service", f"Purge orphelins KO : {e}")
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
@@ -354,6 +385,7 @@ def cancel_queue(item_id: int, db: Session = Depends(get_db)):
         return JSONResponse({"error": "Item introuvable"}, status_code=404)
     item.status = "cancelled"
     db.commit()
+    eventlog.info("queue", f"Queue annulée : {item.item_title}")
     return {"status": "ok", "cancelled": item.item_title}
 
 
@@ -362,8 +394,11 @@ def set_mode(mode: str):
     if mode not in ("manual", "auto"):
         return JSONResponse({"error": "mode invalide"}, status_code=400)
     cfg = get_config()
+    previous = cfg.get("rules", {}).get("mode", "manual")
     cfg.setdefault("rules", {})["mode"] = mode
     save_config(cfg)
+    if previous != mode:
+        eventlog.info("config", f"Mode changé : {previous} → {mode}")
     return RedirectResponse("/settings", status_code=303)
 
 
@@ -684,11 +719,16 @@ def api_scan_copies(
         if item_type == "Movie":
             try:
                 radarr = get_radarr()
-                movie = (
-                    radarr.find_by_tmdb_id(int(provider_ids["Tmdb"])) if provider_ids.get("Tmdb") else None
-                    or (radarr.find_by_imdb_id(provider_ids["Imdb"]) if provider_ids.get("Imdb") else None)
-                    or radarr.find_by_title(item_title)
-                )
+                movie = None
+                if provider_ids.get("Tmdb"):
+                    try:
+                        movie = radarr.find_by_tmdb_id(int(provider_ids["Tmdb"]))
+                    except (TypeError, ValueError):
+                        movie = None
+                if not movie and provider_ids.get("Imdb"):
+                    movie = radarr.find_by_imdb_id(provider_ids["Imdb"])
+                if not movie:
+                    movie = radarr.find_by_title(item_title)
                 if movie:
                     tmdb_id = movie.get("tmdbId") or movie.get("id")
                     service_links["radarr"] = f"{radarr_base}/movie/{tmdb_id}"
@@ -810,12 +850,14 @@ def manual_delete(
     db: Session = Depends(get_db),
 ):
     jf = get_jellyfin()
+    details: dict = {}
+    provider_ids: dict = {}
     try:
-        details = jf.get_item(jellyfin_item_id)
-        provider_ids = details.get("ProviderIds", {})
-    except Exception:
-        details = {}
-        provider_ids = {}
+        admin_uid = (jf.get_users() or [{}])[0].get("Id")
+        details = jf.get_item(jellyfin_item_id, user_id=admin_uid) or {}
+        provider_ids = details.get("ProviderIds", {}) or {}
+    except Exception as e:
+        logger.warning(f"[Manual Delete] Détails Jellyfin indisponibles : {e}")
 
     item = {
         "jellyfin_id": jellyfin_item_id,
@@ -905,6 +947,54 @@ def api_cleanup_delete_remains(entry_id: str = Form(...)):
     entry["remains_checked_at"] = datetime.utcnow().isoformat()
     save_index(entries)
     return JSONResponse(cleanup)
+
+
+# ── Journal événementiel (/logs) ─────────────────────────────────────────────
+
+@router.get("/logs", response_class=HTMLResponse)
+def logs_page(request: Request):
+    stats = eventlog.get_stats()
+    cfg_logs = get_config().get("logs", {})
+    return templates.TemplateResponse(
+        request=request, name="logs.html",
+        context={
+            "stats": stats,
+            "categories": eventlog.CATEGORY_LABELS,
+            "levels": eventlog.VALID_LEVELS,
+            "logs_enabled": cfg_logs.get("enabled", True),
+        },
+    )
+
+
+@router.get("/api/logs")
+def api_logs(
+    limit: int = 200,
+    offset: int = 0,
+    level: str = "",
+    category: str = "",
+    search: str = "",
+):
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    return JSONResponse(eventlog.query_logs(
+        limit=limit,
+        offset=offset,
+        level=level or None,
+        category=category or None,
+        search=search or None,
+    ))
+
+
+@router.get("/api/logs/stats")
+def api_logs_stats():
+    return JSONResponse(eventlog.get_stats())
+
+
+@router.post("/api/logs/purge")
+def api_logs_purge():
+    n = eventlog.purge_all()
+    eventlog.info("config", f"Journal purgé ({n} entrées)")
+    return JSONResponse({"deleted": n})
 
 
 @router.post("/api/cleanup/purge-all")

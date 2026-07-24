@@ -1,7 +1,12 @@
 import json
+import logging
+import os
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger("purgearr.cleanup_store")
 
 DATA_DIR  = Path(__file__).parent.parent / "data"
 INDEX_PATH = DATA_DIR / "cleanup_index.json"
@@ -11,14 +16,29 @@ def load_index() -> list:
     try:
         with open(INDEX_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError as e:
+        logger.error(f"cleanup_index.json invalide ({e}) — index remis à zéro")
         return []
 
 
 def save_index(entries: list):
+    """Écrit dans un fichier temporaire puis rename atomique — évite la corruption si crash."""
     DATA_DIR.mkdir(exist_ok=True)
-    with open(INDEX_PATH, "w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
+    fd, tmp = tempfile.mkstemp(prefix=INDEX_PATH.name + ".", suffix=".tmp", dir=str(DATA_DIR))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(entries, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, INDEX_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def add_entry(

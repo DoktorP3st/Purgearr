@@ -1,7 +1,12 @@
 import json
+import logging
+import os
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Dict, Any
+
+logger = logging.getLogger("purgearr.config")
 
 # Dossier persistant — NE PAS écraser lors des mises à jour
 DATA_DIR       = Path(__file__).parent / "data"
@@ -14,6 +19,24 @@ _LEGACY_YAML = Path(__file__).parent / "config.yaml"
 _config: Dict[str, Any] = {}
 
 
+def _atomic_write_json(path: Path, data: Any):
+    """Écrit dans un fichier temporaire puis rename atomique — évite la corruption si crash."""
+    path.parent.mkdir(exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _migrate_from_yaml():
     """Première installation : copie config.yaml → data/config.json."""
     if not _LEGACY_YAML.exists():
@@ -21,25 +44,29 @@ def _migrate_from_yaml():
     with open(_LEGACY_YAML, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     data.pop("protected", None)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    print("[config] Migration config.yaml → data/config.json effectuée")
+    _atomic_write_json(CONFIG_PATH, data)
+    logger.info("Migration config.yaml → data/config.json effectuée")
 
 
 def load_config() -> Dict[str, Any]:
     global _config
     if not CONFIG_PATH.exists():
         _migrate_from_yaml()
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        _config = json.load(f)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            _config = json.load(f)
+    except FileNotFoundError:
+        _config = {}
+    except json.JSONDecodeError as e:
+        logger.error(f"config.json invalide ({e}) — utilisation d'une config vide")
+        _config = {}
     return _config
 
 
 def save_config(data: Dict[str, Any]):
     """Écrit data/config.json et met à jour le cache mémoire."""
     data.pop("protected", None)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(CONFIG_PATH, data)
     global _config
     _config = dict(data)
 
@@ -63,18 +90,28 @@ def get_protected() -> Dict[str, Any]:
         legacy = get_config().get("protected", {"titles": [], "jellyfin_ids": []})
         save_protected(legacy)
         return legacy
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.error(f"protected.json invalide ({e}) — utilisation d'une liste vide")
         return {"titles": [], "jellyfin_ids": []}
 
 
 def save_protected(data: Dict[str, Any]):
     """Écrit data/protected.json."""
-    with open(PROTECTED_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(PROTECTED_PATH, data)
 
 
 def get_scheduler_config() -> Dict[str, Any]:
     return get_config().get("scheduler", {})
+
+
+def get_logs_config() -> Dict[str, Any]:
+    """Config du journal événementiel — activé par défaut, rétention 30j / 10k entrées."""
+    cfg = get_config().get("logs", {})
+    return {
+        "enabled":         cfg.get("enabled", True),
+        "retention_days":  int(cfg.get("retention_days", 30)),
+        "max_entries":     int(cfg.get("max_entries", 10000)),
+    }
 
 
 def get_mode() -> str:

@@ -339,6 +339,44 @@
     </div>
   </div>
 
+  <!-- Journal événementiel -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header">
+      <h3>📝 Journal événementiel</h3>
+      <span class="text-muted text-sm">Table <code>event_logs</code> dans <code>data/purgearr.db</code></span>
+    </div>
+    <div class="form-grid">
+
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" name="logs_enabled" id="logs_enabled"
+                 {% if cfg.logs is not defined or cfg.logs.enabled %}checked{% endif %}>
+          <label for="logs_enabled">Activer le journal (recommandé)</label>
+        </div>
+        <small class="text-muted mt-8">
+          Trace suppressions, visionnages, protection, sync, erreurs services. Consulter la <a href="/logs" style="color:var(--accent)">page Logs</a>.
+        </small>
+      </div>
+
+      <div></div>
+
+      <div class="form-group">
+        <label>Rétention (jours)</label>
+        <input type="number" name="logs_retention_days" min="1" max="365"
+               value="{{ cfg.logs.retention_days | default(30) }}">
+        <small class="text-muted mt-8">Les entrées plus anciennes sont purgées automatiquement</small>
+      </div>
+
+      <div class="form-group">
+        <label>Nombre max d'entrées</label>
+        <input type="number" name="logs_max_entries" min="100" max="100000"
+               value="{{ cfg.logs.max_entries | default(10000) }}">
+        <small class="text-muted mt-8">Purge des plus anciennes si dépassement</small>
+      </div>
+
+    </div>
+  </div>
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
   </div>
