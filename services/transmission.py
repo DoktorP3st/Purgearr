@@ -3,7 +3,7 @@ import re
 from typing import Dict, List, Optional
 import requests
 
-TORRENT_FIELDS = ["id", "name", "status", "files", "downloadDir", "percentDone", "isFinished", "hashString"]
+TORRENT_FIELDS = ["id", "name", "status", "files", "downloadDir", "percentDone", "isFinished", "hashString", "comment"]
 
 TORRENT_STATS_FIELDS = [
     "id", "name", "status", "files", "downloadDir", "percentDone", "isFinished", "hashString",

@@ -271,8 +271,24 @@ function _showScanResults(label, scan) {
   // Liste des éléments à supprimer
   const list = document.getElementById('dc-list');
   list.innerHTML = '';
-  _addConfirmRow(list, 'Radarr / Sonarr', 'Suppression du fichier + ajout à la liste d\'exclusion', 'var(--info)', '📡');
-  _addConfirmRow(list, 'Transmission',    'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇');
+  const lk = scan.service_links || {};
+  const isMovie = _pendingDelete && _pendingDelete.type === 'Movie';
+
+  // Radarr ou Sonarr selon le type
+  if (isMovie) {
+    _addConfirmRow(list, 'Radarr', 'Suppression du film + ajout à la liste d\'exclusion', 'var(--info)', '📡', lk.radarr || null);
+  } else {
+    _addConfirmRow(list, 'Sonarr', 'Suppression de l\'épisode/série + liste d\'exclusion', 'var(--info)', '📡', lk.sonarr || null);
+  }
+
+  // Transmission — nom du torrent + lien commentaire si URL
+  const transLabel = lk.transmission_name
+    ? `Transmission — ${lk.transmission_name}`
+    : 'Transmission';
+  _addConfirmRow(list, transLabel, 'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇', lk.transmission_comment || null);
+
+  // Jellyfin
+  _addConfirmRow(list, 'Jellyfin', 'Refresh bibliothèque', 'var(--info)', '🎬', lk.jellyfin || null);
 
   (scan.copies || []).forEach(c => {
     const badge = c.match_method === 'inode' ? '🔗 inode' : '🔍 hash';
@@ -285,15 +301,22 @@ function _showScanResults(label, scan) {
   });
 }
 
-function _addConfirmRow(ul, path, detail, color, icon) {
+function _addConfirmRow(ul, path, detail, color, icon, href) {
   const li = document.createElement('li');
   li.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start';
-  li.innerHTML = `
+  const inner = `
     <span style="flex-shrink:0;font-size:14px;margin-top:1px">${icon}</span>
     <div style="min-width:0;flex:1">
       <div style="font-family:monospace;font-size:11px;color:${color};word-break:break-all">${esc(path)}</div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${detail}</div>
     </div>`;
+  if (href) {
+    li.innerHTML = `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer"
+      style="display:flex;gap:10px;align-items:flex-start;flex:1;
+             text-decoration:none;color:inherit;cursor:pointer">${inner}</a>`;
+  } else {
+    li.innerHTML = inner;
+  }
   ul.appendChild(li);
 }
 

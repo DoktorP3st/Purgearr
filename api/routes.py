@@ -638,6 +638,7 @@ def api_scan_copies(
     file_path = ""
     raw_jf_path = ""
     jf_error  = ""
+    it: dict = {}
     try:
         jf    = get_jellyfin()
         admin = (jf.get_users() or [{}])[0].get("Id")
@@ -650,7 +651,61 @@ def api_scan_copies(
     label  = series_title or item_title
     result = scan_copies_smart(label, file_path, scan_paths)
 
-    # Debug info toujours présent dans la réponse
+    # ── Liens vers les services ────────────────────────────────────────────────
+    cfg_s = get_config()
+    service_links: dict = {}
+    provider_ids = it.get("ProviderIds", {})
+
+    # Jellyfin — lien direct vers la fiche
+    jf_base = cfg_s.get("jellyfin", {}).get("url", "").rstrip("/")
+    if jf_base and jellyfin_item_id:
+        service_links["jellyfin"] = f"{jf_base}/web/index.html#!/details?id={jellyfin_item_id}"
+
+    # Radarr — page du film (ID interne Radarr)
+    if item_type == "Movie":
+        radarr_base = cfg_s.get("radarr", {}).get("url", "").rstrip("/")
+        if radarr_base:
+            try:
+                radarr = get_radarr()
+                movie = (
+                    radarr.find_by_tmdb_id(int(provider_ids["Tmdb"])) if provider_ids.get("Tmdb") else None
+                    or (radarr.find_by_imdb_id(provider_ids["Imdb"]) if provider_ids.get("Imdb") else None)
+                    or radarr.find_by_title(item_title)
+                )
+                if movie:
+                    service_links["radarr"] = f"{radarr_base}/movie/{movie['id']}"
+            except Exception:
+                pass
+
+    # Sonarr — page de la série (titleSlug)
+    elif item_type in ("Episode", "Series"):
+        sonarr_base = cfg_s.get("sonarr", {}).get("url", "").rstrip("/")
+        if sonarr_base:
+            try:
+                sonarr = get_sonarr()
+                series_obj = sonarr.find_by_title(series_title or item_title)
+                if series_obj:
+                    slug = series_obj.get("titleSlug") or str(series_obj.get("id", ""))
+                    service_links["sonarr"] = f"{sonarr_base}/series/{slug}"
+            except Exception:
+                pass
+
+    # Transmission — URL du commentaire du torrent (lien tracker si présent)
+    try:
+        tr = get_transmission()
+        torrent = tr.find_by_path(file_path) if file_path else None
+        if not torrent:
+            torrent = tr.find_by_name(series_title or item_title)
+        if torrent:
+            comment = (torrent.get("comment") or "").strip()
+            service_links["transmission_name"]    = torrent.get("name", "")
+            service_links["transmission_comment"] = comment if comment.startswith("http") else ""
+    except Exception:
+        pass
+
+    result["service_links"] = service_links
+
+    # ── Debug ──────────────────────────────────────────────────────────────────
     resolved = file_path != raw_jf_path and bool(file_path)
     result["_debug"] = {
         "jellyfin_path": raw_jf_path or "(vide)",

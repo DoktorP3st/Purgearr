@@ -144,6 +144,21 @@ Jellyfin monte les bibliothèques sous `/media/film/` et `/media/série/` mais l
 - `showToast(msg, type)` — toast bottom-right
 - `showCleanupReport(label, c)` — modal rapport nettoyage
 - `sidebarScan()` — scan d'import Jellyfin depuis sidebar
+- `_addConfirmRow(ul, path, detail, color, icon, href)` — ligne dans le modal de confirmation, cliquable si `href` fourni
+
+## Liens services dans le modal de confirmation
+
+`POST /api/scan/copies` retourne `service_links` :
+
+| Clé | Contenu |
+|---|---|
+| `jellyfin` | `{jellyfin_url}/web/index.html#!/details?id={item_id}` |
+| `radarr` | `{radarr_url}/movie/{radarr_movie_id}` (lookup via API) |
+| `sonarr` | `{sonarr_url}/series/{titleSlug}` (lookup via API) |
+| `transmission_name` | Nom du torrent trouvé dans Transmission |
+| `transmission_comment` | URL du champ comment du torrent (si commence par `http`) |
+
+Les lignes Radarr/Sonarr/Transmission/Jellyfin dans le modal sont cliquables si un lien existe, invisibles sans survol (`text-decoration:none;color:inherit`). Le champ `comment` de Transmission contient souvent l'URL de la page tracker du site de téléchargement.
 
 ## Problèmes déjà résolus
 
