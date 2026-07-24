@@ -11,14 +11,21 @@
 
 **Purgearr** est une interface web de gestion automatique des médias pour les setups **Jellyfin + Radarr + Sonarr + Transmission**. Il surveille ce que tu regardes et supprime automatiquement (ou sur demande) les contenus vus pour libérer de l'espace disque.
 
+### Aperçu
+
+| Page Regardés |
+|---|
+| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) |
+
 ### Fonctionnalités
 
 - 📊 **Dashboard** — stats globales, queue de suppression, historique récent
 - 👁️ **Regardés** — liste des contenus vus, progression par utilisateur, statut "prêt à supprimer"
-- 🧹 **Suggestions** — jamais regardés / vus partiellement + stats de seeding Transmission en temps réel
+- 🧹 **Suggestions** — jamais regardés / vus partiellement / torrents morts (ratio 0) + stats seeding Transmission
 - 🛡️ **Protection** — whitelist films/séries à ne jamais supprimer (recherche live Jellyfin)
 - 🗑️ **Historique** — toutes les suppressions + scanner les copies résiduelles après coup
 - ⚙️ **Paramètres** — configuration complète depuis l'interface web, sans éditer de fichiers
+- 🌐 **Multi-langue** — Français / English (choix dans les paramètres)
 - 🔗 **Liens services** — Radarr, Sonarr, Transmission et Jellyfin cliquables dans la sidebar et le modal de confirmation
 - 🔍 **Modal de confirmation** — avant chaque suppression, affiche exactement ce qui sera effacé, les copies détectées et les trackers impliqués
 - 🧲 **Multi-tracker** — détecte et stoppe tous les torrents qui seedent le même fichier (multi-tracker support)
@@ -131,14 +138,21 @@ MIT — utilise et adapte librement.
 
 **Purgearr** is a web interface for automatic media management in **Jellyfin + Radarr + Sonarr + Transmission** setups. It watches what you watch and automatically (or on demand) deletes viewed content to free up disk space.
 
+### Screenshots
+
+| Watched page |
+|---|
+| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) |
+
 ### Features
 
 - 📊 **Dashboard** — global stats, deletion queue, recent history
 - 👁️ **Watched** — list of viewed content, per-user progress, "ready to delete" status
-- 🧹 **Suggestions** — never watched / partially watched + live Transmission seeding stats
+- 🧹 **Suggestions** — never watched / partially watched / dead torrents (ratio 0) + live Transmission seeding stats
 - 🛡️ **Protection** — whitelist of movies/shows to never delete (live Jellyfin search)
 - 🗑️ **History** — all past deletions + scan for leftover copies after the fact
 - ⚙️ **Settings** — full configuration from the web UI, no file editing required
+- 🌐 **Multi-language** — French / English (choose in settings)
 - 🔗 **Service links** — Radarr, Sonarr, Transmission and Jellyfin clickable in sidebar and confirmation modal
 - 🔍 **Confirmation modal** — before each deletion, shows exactly what will be removed, detected copies, and involved trackers
 - 🧲 **Multi-tracker** — detects and stops all torrents seeding the same file across multiple trackers
