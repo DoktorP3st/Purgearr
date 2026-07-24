@@ -36,6 +36,7 @@ Lancement : `source venv/bin/activate && python main.py`
 │   ├── fileops.py        — scan_copies_smart(), run_cleanup(), hash_file()
 │   ├── cleanup_store.py  — gestion data/cleanup_index.json
 │   ├── sync.py           — sync_watch_data() depuis Jellyfin
+│   ├── eventlog.py       — journal événementiel (info/warning/error, 10 catégories)
 │   └── rules.py          — logique readiness multi-users
 │
 ├── services/
@@ -51,8 +52,9 @@ Lancement : `source venv/bin/activate && python main.py`
     ├── watched.html      — contenus regardés, filtres, suppression manuelle
     ├── suggestions.html  — jamais vus / vus partiellement + badges seeding
     ├── protected.html    — whitelist avec recherche live Jellyfin
-    ├── settings.html     — paramètres + chemins bibliothèque
+    ├── settings.html     — paramètres + chemins bibliothèque + config journal
     ├── history.html      — historique + bouton "Scanner les restes"
+    ├── logs.html         — journal événementiel (filtres, timeline, stats, auto-refresh)
     ├── transmission.html — page orphelins Transmission (accessible via /transmission)
     └── dashboard.html    — stats + queue
 ```
@@ -63,7 +65,7 @@ Lancement : `source venv/bin/activate && python main.py`
 |---|---|---|
 | `data/config.json` | Config : URLs, clés API, règles, extra_paths, library roots, scheduler | `save_config()` |
 | `data/protected.json` | IDs Jellyfin + titres protégés | `save_protected()` |
-| `data/purgearr.db` | WatchEvent, DeletionQueue, DeletionHistory | sync + pipeline + scheduler |
+| `data/purgearr.db` | WatchEvent, DeletionQueue, DeletionHistory, **LogEntry** (event_logs) | sync + pipeline + scheduler + eventlog |
 | `data/cleanup_index.json` | Hash + métadonnées de chaque suppression | `core/cleanup_store.py` |
 
 **Règle absolue :** ne JAMAIS écraser le dossier `data/` lors d'une mise à jour.
@@ -83,7 +85,8 @@ Lancement : `source venv/bin/activate && python main.py`
     "/srv/mergerfs/DATA_POOL/HDD 1TO/Torrent/downloads/Seeding/"
   ],
   "rules": { "mode": "manual", ... },
-  "scheduler": { "scan_interval_minutes": 360, "queue_interval_minutes": 360 }
+  "scheduler": { "scan_interval_minutes": 360, "queue_interval_minutes": 360 },
+  "logs": { "enabled": true, "retention_days": 30, "max_entries": 10000 }
 }
 ```
 
@@ -223,11 +226,38 @@ Toujours accessible (dans tous les états du scan). Affiche :
 - **Radarr lien vers "film introuvable"** : correction `movie['id']` → `movie['tmdbId']`
 - **Tracker URL non extraite** : regex cherche URL n'importe où dans le texte du comment, pas juste au début
 - **Tracker vide si comment absent** : fallback sur `trackers[].announce`
+- **webhook.py crash si Jellyfin KO** : `item_details` initialisé à `{}` avant le try (NameError corrigé)
+- **Corruption JSON sur crash** : `save_config`, `save_protected`, `save_index` utilisent tempfile + fsync + os.replace (écriture atomique)
+- **JSONDecodeError au démarrage** : `load_config()` + `get_protected()` ont un try/except avec fallback `{}`
+- **Fallback Radarr/Sonarr cassé** : bug de précédence `if/else/or` — remplacé par chaîne if explicite
+- **process_queue DB corrompue** : `db.rollback()` ajouté sur exception avant de mettre le statut à "failed"
+- **get_item sans user context** (process_queue + manual_delete) : récupère `admin_uid` et le passe à `jf.get_item()`
+- **Sync bloque tous les users** : per-user try/except — un utilisateur KO ne stoppe plus les autres
+- **Jobs APScheduler en double après veille** : `coalesce=True, max_instances=1, misfire_grace_time=300`
+- **scan_copies_smart lent sur NAS** : filtre par taille avant hash SHA-256
+- **settings page crash si clé logs absente** : `settings_page()` injecte les defaults via `setdefault` avant template
+
+## Journal événementiel (`core/eventlog.py`)
+
+API : `eventlog.info(category, message, **ctx)` / `warning()` / `error()`
+
+10 catégories : `deletion` `watch` `queue` `protection` `sync` `scheduler` `webhook` `service` `config` `error`
+
+- Stockage : table `event_logs` dans `data/purgearr.db`
+- Auto-purge tous les 250 writes (rétention + max_entries)
+- Configurable dans Paramètres (enabled, retention_days, max_entries)
+- Page `/logs` avec filtres catégorie/niveau/recherche, auto-refresh 10s, stats, purge
+- Ne lève jamais d'exception (silencieux sur erreur interne)
 
 ## Webhook Jellyfin
 
-Plugin **Webhook** → `http://192.168.1.38:7979/webhook/jellyfin`
-Événement : `PlaybackStop`
+Plugin **Webhook** (catalogue officiel Jellyfin) → configurer une **Generic Destination** :
+- **Webhook URL** : `http://192.168.1.38:7979/webhook/jellyfin`
+- **Notification Type** : `Playback Stop` uniquement
+- **Item Type** : Movies + Episodes
+- **Send All Properties** : activé
+
+Endpoint accepte uniquement POST — un GET depuis le navigateur renvoie 405 (normal).
 
 ## Service systemd (à créer)
 
