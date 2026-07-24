@@ -491,14 +491,16 @@ def suggestions_page(request: Request):
     def _seed_info(title: str) -> dict:
         t = _match_torrent(title)
         if not t:
-            return {"found": False, "ratio": 0.0, "rate_up": 0, "peers_up": 0, "uploaded_gb": 0.0}
+            return {"found": False, "ratio": 0.0, "rate_up": 0, "peers_up": 0, "uploaded_gb": 0.0, "size_gb": 0.0}
         uploaded_bytes = t.get("uploadedEver", 0) or 0
+        size_bytes = t.get("sizeWhenDone", 0) or 0
         return {
             "found":       True,
             "ratio":       round(t.get("uploadRatio", 0) or 0, 2),
             "rate_up":     t.get("rateUpload", 0) or 0,
             "peers_up":    t.get("peersGettingFromUs", 0) or 0,
             "uploaded_gb": round(uploaded_bytes / (1024 ** 3), 2),
+            "size_gb":     round(size_bytes / (1024 ** 3), 2),
         }
 
     def _process(it, watched_per_user, all_watched_ids):
@@ -532,11 +534,21 @@ def suggestions_page(request: Request):
     never_watched   = [i for i in items if i["watch_count"] == 0  and not i["is_protected"]]
     partial_watched = [i for i in items if 0 < i["watch_count"] < i["total_users"] and not i["is_protected"]]
 
+    dead_seed = [
+        i for i in items
+        if i["seed"]["found"]
+        and i["seed"]["ratio"] == 0
+        and i["seed"]["rate_up"] == 0
+        and not i["is_protected"]
+    ]
+    dead_seed.sort(key=lambda x: x["seed"]["size_gb"], reverse=True)
+
     return templates.TemplateResponse(
         request=request, name="suggestions.html",
         context={
             "never_watched":   never_watched[:80],
             "partial_watched": partial_watched[:40],
+            "dead_seed":       dead_seed[:60],
             "users":           users,
         },
     )

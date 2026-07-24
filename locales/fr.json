@@ -101,7 +101,10 @@
     "seed_dead_title": "Ratio 0 — rien envoyé",
     "seed_unknown_title": "Torrent non trouvé dans Transmission",
     "users_label": "utilisateurs",
-    "users_short": "users"
+    "users_short": "users",
+    "dead_title": "💀 Occupent de l'espace sans seeder",
+    "dead_subtitle": "Ratio 0 — personne ne télécharge, espace gaspillé",
+    "dead_ratio_zero": "Rien uploadé — ratio 0"
   },
   "history": {
     "title": "Historique des suppressions",

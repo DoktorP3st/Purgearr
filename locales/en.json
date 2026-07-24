@@ -101,7 +101,10 @@
     "seed_dead_title": "Ratio 0 — nothing uploaded",
     "seed_unknown_title": "Torrent not found in Transmission",
     "users_label": "users",
-    "users_short": "users"
+    "users_short": "users",
+    "dead_title": "💀 Taking up space without seeding",
+    "dead_subtitle": "Ratio 0 — nobody downloading, wasted space",
+    "dead_ratio_zero": "Nothing uploaded — ratio 0"
   },
   "history": {
     "title": "Deletion history",
