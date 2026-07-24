@@ -121,6 +121,7 @@ def scan_copies_smart(
 
     strategy = "inode+hash" if known_inode else "hash"
     found: List[Dict] = []
+    reported: set = set()  # global à tous les base paths pour éviter les doublons
 
     for base in extra_paths:
         base = base.strip()
@@ -129,7 +130,6 @@ def scan_copies_smart(
             continue
 
         base_depth = base.rstrip(os.sep).count(os.sep)
-        reported: set = set()
 
         try:
             for root, dirs, files in os.walk(base, followlinks=False):
@@ -235,6 +235,9 @@ def delete_copy(entry: Dict) -> Dict:
             os.remove(path)
             _delete_companions(path)
         logger.info("[Fileops] Supprimé : %s", path)
+        return {**entry, "success": True, "error": None}
+    except FileNotFoundError:
+        logger.info("[Fileops] Déjà supprimé (ignoré) : %s", path)
         return {**entry, "success": True, "error": None}
     except Exception as e:
         logger.error("[Fileops] Erreur suppression %s : %s", path, e)
