@@ -30,21 +30,21 @@ def _save_history(db: Session, item: Dict, services: List[str], triggered_by: st
     db.commit()
 
 
-def _stop_torrent(file_path: str, title: str) -> Optional[str]:
-    """Cherche et stoppe le torrent correspondant. Retourne le nom du torrent ou None."""
+def _stop_all_torrents(file_path: str, title: str) -> List[str]:
+    """Cherche et stoppe TOUS les torrents correspondants (multi-tracker). Retourne la liste des noms."""
+    names: List[str] = []
     try:
         tr = get_transmission()
-        torrent = tr.find_by_path(file_path) if file_path else None
-        if not torrent:
-            torrent = tr.find_by_name(title)
-        if torrent:
-            # delete_data=False : on laisse Radarr/Sonarr gérer la suppression des fichiers
+        torrents = tr.find_all_by_path_or_name(file_path, title)
+        if not torrents:
+            return names
+        for torrent in torrents:
             tr.stop_and_remove(torrent["id"], delete_data=False)
             logger.info(f"[Transmission] Torrent supprimé : {torrent['name']}")
-            return torrent["name"]
+            names.append(torrent["name"])
     except Exception as e:
         logger.warning(f"[Transmission] Erreur pour '{title}': {e}")
-    return None
+    return names
 
 
 # ── Suppression film ──────────────────────────────────────────────────────────
@@ -78,10 +78,11 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         source_hash = hash_file(file_path)
         logger.debug(f"[Pipeline] Hash source calculé avant suppression : {source_hash[:12]}…")
 
-    # 1. Transmission — stop seeding avant que Radarr efface les fichiers
-    torrent_name = _stop_torrent(file_path, title)
-    if torrent_name:
+    # 1. Transmission — stop TOUS les torrents seedant ce fichier (multi-tracker)
+    torrent_names = _stop_all_torrents(file_path, title)
+    if torrent_names:
         result["services"].append("transmission")
+        logger.info(f"[Transmission] {len(torrent_names)} torrent(s) supprimé(s) pour : {title}")
 
     # 1.5 Sauvegarder dans l'index cleanup AVANT que Radarr supprime les fichiers
     try:
@@ -90,7 +91,7 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         add_entry(
             item_title=title, item_type="Movie", source_hash=source_hash,
             file_path=file_path, jellyfin_item_id=item.get("jellyfin_id", ""),
-            file_size_bytes=file_size, torrent_name=torrent_name,
+            file_size_bytes=file_size, torrent_name=", ".join(torrent_names) if torrent_names else None,
             scan_paths=get_scan_paths("Movie"),
         )
     except Exception as e:
@@ -167,10 +168,11 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
     if not source_hash and file_path and os.path.isfile(file_path):
         source_hash = hash_file(file_path)
 
-    # 1. Transmission
-    torrent_name = _stop_torrent(file_path, series_title)
-    if torrent_name:
+    # 1. Transmission — stop TOUS les torrents seedant cet épisode (multi-tracker)
+    torrent_names = _stop_all_torrents(file_path, series_title)
+    if torrent_names:
         result["services"].append("transmission")
+        logger.info(f"[Transmission] {len(torrent_names)} torrent(s) supprimé(s) pour : {series_title}")
 
     # 1.5 Sauvegarder dans l'index cleanup AVANT que Sonarr supprime les fichiers
     try:
@@ -180,7 +182,7 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
             item_title=title, item_type="Episode", source_hash=source_hash,
             file_path=file_path, series_title=series_title,
             jellyfin_item_id=item.get("jellyfin_id", ""),
-            file_size_bytes=file_size, torrent_name=torrent_name,
+            file_size_bytes=file_size, torrent_name=", ".join(torrent_names) if torrent_names else None,
             scan_paths=get_scan_paths("Episode"),
         )
     except Exception as e:

@@ -690,16 +690,19 @@ def api_scan_copies(
             except Exception:
                 pass
 
-    # Transmission — URL du commentaire du torrent (lien tracker si présent)
+    # Transmission — TOUS les torrents correspondants (multi-tracker)
     try:
         tr = get_transmission()
-        torrent = tr.find_by_path(file_path) if file_path else None
-        if not torrent:
-            torrent = tr.find_by_name(series_title or item_title)
-        if torrent:
-            comment = (torrent.get("comment") or "").strip()
-            service_links["transmission_name"]    = torrent.get("name", "")
-            service_links["transmission_comment"] = comment if comment.startswith("http") else ""
+        torrents = tr.find_all_by_path_or_name(file_path, series_title or item_title)
+        if torrents:
+            service_links["transmission_torrents"] = [
+                {
+                    "name":    t.get("name", ""),
+                    "comment": (t.get("comment") or "").strip()
+                               if (t.get("comment") or "").strip().startswith("http") else "",
+                }
+                for t in torrents
+            ]
     except Exception:
         pass
 

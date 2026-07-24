@@ -281,11 +281,21 @@ function _showScanResults(label, scan) {
     _addConfirmRow(list, 'Sonarr', 'Suppression de l\'épisode/série + liste d\'exclusion', 'var(--info)', '📡', lk.sonarr || null);
   }
 
-  // Transmission — nom du torrent + lien commentaire si URL
-  const transLabel = lk.transmission_name
-    ? `Transmission — ${lk.transmission_name}`
-    : 'Transmission';
-  _addConfirmRow(list, transLabel, 'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇', lk.transmission_comment || null);
+  // Transmission — une ligne par torrent (multi-tracker)
+  const transTorrents = lk.transmission_torrents || [];
+  if (transTorrents.length === 0) {
+    _addConfirmRow(list, 'Transmission', 'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇', null);
+  } else {
+    transTorrents.forEach(t => {
+      _addConfirmRow(
+        list,
+        `Transmission — ${t.name}`,
+        'Arrêt du seeding + suppression du torrent',
+        'var(--info)', '⬇',
+        t.comment || null
+      );
+    });
+  }
 
   // Jellyfin
   _addConfirmRow(list, 'Jellyfin', 'Refresh bibliothèque', 'var(--info)', '🎬', lk.jellyfin || null);

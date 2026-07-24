@@ -73,6 +73,28 @@ class TransmissionClient:
                 return t
         return None
 
+    def find_all_by_path_or_name(self, file_path: str = "", name: str = "") -> List[Dict]:
+        """Retourne TOUS les torrents correspondant au chemin ou au nom (multi-tracker)."""
+        needle = _norm(name) if name else ""
+        matches: List[Dict] = []
+        for t in self.get_all_torrents():
+            matched = False
+            if file_path:
+                dl = t.get("downloadDir", "").rstrip("/")
+                t_name = t.get("name", "")
+                if file_path in f"{dl}/{t_name}" or t_name in file_path:
+                    matched = True
+                if not matched:
+                    for f in t.get("files", []):
+                        if file_path.endswith(f.get("name", "")) or f.get("name", "") in file_path:
+                            matched = True
+                            break
+            if not matched and needle and needle in _norm(t.get("name", "")):
+                matched = True
+            if matched:
+                matches.append(t)
+        return matches
+
     def find_by_hash(self, hash_string: str) -> Optional[Dict]:
         for torrent in self.get_all_torrents():
             if torrent.get("hashString", "").lower() == hash_string.lower():
