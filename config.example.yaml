@@ -1,48 +1,59 @@
 # ============================================================
-#  Purgearr — Configuration exemple
-#  Copier ce fichier en config.yaml et remplir les valeurs
-#  Au premier démarrage, config.yaml est migré vers data/config.json
-#  Ensuite tout est éditable depuis l'interface web (Paramètres)
+#  Purgearr — Configuration exemple / Example configuration
+#
+#  FR : Copier ce fichier en config.yaml et remplir les valeurs.
+#       Au premier démarrage, config.yaml est migré vers data/config.json.
+#       Ensuite tout est éditable depuis l'interface web (Paramètres).
+#
+#  EN : Copy this file to config.yaml and fill in your values.
+#       On first launch, config.yaml is migrated to data/config.json.
+#       All settings can then be edited from the web UI (Settings).
 # ============================================================
 
 radarr:
-  url: "http://192.168.1.x:7878/"
-  api_key: "VOTRE_CLE_API_RADARR"
+  url: "http://192.168.1.x:7878"
+  api_key: "YOUR_RADARR_API_KEY"
 
 sonarr:
-  url: "http://192.168.1.x:8989/"
-  api_key: "VOTRE_CLE_API_SONARR"
+  url: "http://192.168.1.x:8989"
+  api_key: "YOUR_SONARR_API_KEY"
 
 transmission:
   host: "192.168.1.x"
   port: 9091
-  username: ""          # laisser vide si pas d'auth
-  password: ""          # laisser vide si pas d'auth
+  username: ""          # leave empty if no authentication
+  password: ""          # leave empty if no authentication
 
 jellyfin:
-  url: "http://192.168.1.x:8096/"
-  api_key: "VOTRE_CLE_API_JELLYFIN"
+  url: "http://192.168.1.x:8096"
+  api_key: "YOUR_JELLYFIN_API_KEY"
+
+# Paths where downloaded files actually live on disk
+# FR : Chemins réels des fichiers téléchargés sur le disque
+library_root_movies: "/path/to/downloads/movies/"
+library_root_series: "/path/to/downloads/series/"
+
+# Additional paths to scan for duplicate copies (hardlinks, seeding folders)
+# FR : Chemins additionnels à scanner pour détecter les copies (hardlinks, dossiers seeding)
+extra_paths:
+  - "/path/to/downloads/complete/"
+  - "/path/to/downloads/seeding/"
 
 scheduler:
-  queue_interval_minutes: 360   # Vérification queue de suppression (mode auto)
-  scan_interval_minutes: 360    # Import données Jellyfin (vus, favoris)
-
-telegram:
-  enabled: false
-  bot_token: ""
-  chat_id: ""
+  queue_interval_minutes: 360   # How often to process the deletion queue (auto mode)
+  scan_interval_minutes: 360    # How often to import watch data from Jellyfin
 
 rules:
   mode: "manual"                # "manual" | "auto"
-  primary_user: ""              # ID Jellyfin de l'utilisateur principal
-  required_users: []            # IDs des utilisateurs qui doivent aussi avoir regardé
+  primary_user: ""              # Jellyfin user ID of the primary user
+  required_users: []            # Jellyfin user IDs who must also have watched
   watch_percentage_threshold: 85
   deletion_delay_hours: 0
   multi_user_mode: "any"        # "any" | "all"
   watched_users: []
   delete_files: true
   add_to_exclusion: true
-  disk_usage_threshold: 0       # % disque max avant nettoyage auto (0 = désactivé)
+  disk_usage_threshold: 0       # Max disk usage % before auto-cleanup (0 = disabled)
 
   movies:
     enabled: true
@@ -54,6 +65,3 @@ rules:
     delete_mode: "episode"      # "episode" | "series"
     watch_percentage_threshold: 85
     deletion_delay_hours: 0
-
-extra_paths: []                 # Chemins additionnels à scanner (copies, hardlinks)
-                                # Ex: ["/srv/data/downloads", "/srv/data/films2"]

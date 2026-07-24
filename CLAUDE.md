@@ -1,17 +1,19 @@
 # Purgearr — Contexte projet pour Claude
 
 ## Description
-Application de gestion et suppression automatique de médias pour NAS Raspberry Pi.
+Application web de gestion et suppression automatique de médias pour NAS Raspberry Pi.
 Stack : FastAPI + Jinja2 + SQLite (SQLAlchemy) + APScheduler
 Port : 7979
 Chemin Pi : `/srv/mergerfs/DATA_POOL/HDD 1TO/appdata/Purgearr/`
 Virtualenv : `venv/bin/activate`
 Lancement : `source venv/bin/activate && python main.py`
 
+**Règle de déploiement :** l'utilisateur modifie les fichiers locaux (Windows) et les replace manuellement sur le Pi. Ne jamais demander à l'utilisateur de taper des commandes SSH pour éditer du code.
+
 ## Services connectés
 - **Radarr** — suppression films + ajout liste exclusion
 - **Sonarr** — suppression séries/épisodes
-- **Transmission** — arrêt seeding + suppression torrent
+- **Transmission** — arrêt seeding + suppression torrent (multi-tracker)
 - **Jellyfin** — webhook PlaybackStop, récupération historique, recherche
 
 ## Architecture fichiers
@@ -51,6 +53,7 @@ Lancement : `source venv/bin/activate && python main.py`
     ├── protected.html    — whitelist avec recherche live Jellyfin
     ├── settings.html     — paramètres + chemins bibliothèque
     ├── history.html      — historique + bouton "Scanner les restes"
+    ├── transmission.html — page orphelins Transmission (accessible via /transmission)
     └── dashboard.html    — stats + queue
 ```
 
@@ -95,9 +98,9 @@ Jellyfin monte les bibliothèques sous `/media/film/` et `/media/série/` mais l
 ## Flux suppression (2 étapes avec confirmation)
 
 1. Clic "Supprimer" → `deleteWithScan()` (JS, base.html)
-2. `POST /api/scan/copies` → `scan_copies_smart()` → résultats dans modal
+2. `POST /api/scan/copies` → `scan_copies_smart()` → résultats + `service_links` dans modal
 3. Confirmation → `POST /api/delete/manual`
-4. Pipeline : hash calculé → Transmission stop → **cleanup_index saved** → Radarr/Sonarr → run_cleanup() → Jellyfin refresh
+4. Pipeline : hash calculé → Transmission stop ALL → **cleanup_index saved** → Radarr/Sonarr → run_cleanup() → Jellyfin refresh
 5. Rapport nettoyage affiché
 
 ## Stratégie détection copies (`core/fileops.py`)
@@ -137,15 +140,6 @@ Jellyfin monte les bibliothèques sous `/media/film/` et `/media/série/` mais l
 }
 ```
 
-## JS partagé (base.html)
-
-- `deleteWithScan(id, type, title, seriesTitle, cardElemId)` — flux suppression
-- `confirmDelete()` — exécute la suppression après confirmation
-- `showToast(msg, type)` — toast bottom-right
-- `showCleanupReport(label, c)` — modal rapport nettoyage
-- `sidebarScan()` — scan d'import Jellyfin depuis sidebar
-- `_addConfirmRow(ul, path, detail, color, icon, href)` — ligne dans le modal de confirmation, cliquable si `href` fourni
-
 ## Liens services dans le modal de confirmation
 
 `POST /api/scan/copies` retourne `service_links` :
@@ -153,28 +147,86 @@ Jellyfin monte les bibliothèques sous `/media/film/` et `/media/série/` mais l
 | Clé | Contenu |
 |---|---|
 | `jellyfin` | `{jellyfin_url}/web/index.html#!/details?id={item_id}` |
-| `radarr` | `{radarr_url}/movie/{radarr_movie_id}` (lookup via API) |
-| `sonarr` | `{sonarr_url}/series/{titleSlug}` (lookup via API) |
-| `transmission_name` | Nom du torrent trouvé dans Transmission |
-| `transmission_comment` | URL du champ comment du torrent (si commence par `http`) |
+| `radarr` | `{radarr_url}/movie/{tmdbId}` — utilise **tmdbId** (pas l'id interne Radarr) |
+| `sonarr` | `{sonarr_url}/series/{titleSlug}` |
+| `transmission_torrents` | Liste `[{name, tracker_name, tracker_url}]` |
 
-Les lignes Radarr/Sonarr/Transmission/Jellyfin dans le modal sont cliquables si un lien existe, invisibles sans survol (`text-decoration:none;color:inherit`). Le champ `comment` de Transmission contient souvent l'URL de la page tracker du site de téléchargement.
+**Fallback Radarr/Sonarr** : si la recherche API échoue, lien vers `{url}/` (accueil du service).
+
+### Extraction tracker Transmission (`_parse_tracker` + `_get_tracker_info`)
+
+Chaque torrent peut avoir son tracker dans :
+1. Le champ `comment` (texte libre contenant une URL, ex: `"Please keep seeding. https://tracker.cc/torrents/1234"`)
+2. Le tableau `trackers[].announce` (fallback quand comment est vide)
+
+`_parse_tracker(comment)` utilise une regex pour trouver la première URL `http/https/udp://` n'importe où dans le texte, extrait le domaine, et retourne `(tracker_name, tracker_url)` :
+- URL d'announce (`/announce` dans le path) ou `udp://` → lien vers `https://{domain}/`
+- URL directe (page torrent) → utilise l'URL complète
+
+`_get_tracker_info(torrent)` essaie d'abord le `comment`, puis parcourt `trackers[]`.
+
+Le champ `"trackers"` est inclus dans `TORRENT_FIELDS` dans `services/transmission.py`.
+
+### Affichage dans le modal
+
+- **Avec tracker URL** : `Transmission — {tracker_name} ↗` (cliquable), détail = nom du torrent
+- **Sans tracker URL** : `Transmission — {nom_du_torrent}` (non cliquable)
+- **Radarr/Jellyfin** : toujours cliquables si URL configurée (fallback = accueil service)
+- **Sonarr** : cliquable uniquement pour les séries/épisodes
+
+## Sidebar — Liens services cliquables
+
+`GET /api/config/service-links` retourne les 4 URLs depuis le config :
+```json
+{
+  "radarr": "http://...:7878",
+  "sonarr": "http://...:8989",
+  "transmission": "http://...:9091/",
+  "jellyfin": "http://...:8096"
+}
+```
+
+Dans `base.html`, les 4 noms (Radarr, Sonarr, Transmission, Jellyfin) sont des `<a>` invisibles (`color:inherit;text-decoration:none`) dont le `href` est défini en JS après fetch de cet endpoint. Le `cursor:pointer` s'active uniquement quand l'URL est configurée.
+
+## JS partagé (base.html)
+
+- `deleteWithScan(id, type, title, seriesTitle, cardElemId)` — flux suppression
+- `confirmDelete()` — exécute la suppression après confirmation
+- `showToast(msg, type)` — toast bottom-right
+- `showCleanupReport(label, c)` — modal rapport nettoyage
+- `sidebarScan()` — scan d'import Jellyfin depuis sidebar
+- `_addConfirmRow(ul, path, detail, color, icon, href)` — ligne dans le modal de confirmation
+  - Si `href` fourni : crée un `<a>` cliquable avec `cursor:pointer`, hover highlight, et indicateur `↗` visible
+  - Si `href` null : ligne non cliquable
+
+## Diagnostic dans le modal (panneau `🔍 Diagnostic`)
+
+Toujours accessible (dans tous les états du scan). Affiche :
+- Path Jellyfin brut vs path résolu (✓/✗)
+- Hash calculé
+- Chemins scannés
+- Commentaires bruts des torrents Transmission trouvés
+- Liens services construits + erreurs éventuelles
 
 ## Problèmes déjà résolus
 
-- **Boutons onclick cassés** : `tojson` produit des guillemets. Fix : data attributes + `addEventListener`.
-- **SQLite database locked** : WAL mode + timeout 30s.
-- **Jellyfin get_item sans user context** : utiliser `/Users/{admin}/Items/{id}`.
-- **Faux positifs titre** : supprimé — matching hash-only uniquement.
-- **Hash perdu après suppression Radarr** : `source_hash` calculé AVANT, stocké dans cleanup_index.
-- **Chemin Jellyfin ≠ disque** : `resolve_real_path()` essaie toutes les racines connues.
-- **Release folder = toute la bibliothèque** : fix → parent du fichier trouvé, pas premier composant depuis base.
-- **library_root écrasé à vide** : `routes.py` garde la valeur existante si le form envoie vide.
-- **Séries : path Jellyfin = dossier** : `resolve_real_path` accepte `os.path.isdir`, `scan_copies_smart` trouve premier fichier vidéo dans le dossier.
+- **Boutons onclick cassés** : data attributes + addEventListener
+- **SQLite database locked** : WAL mode + timeout 30s
+- **Jellyfin get_item sans user context** : utiliser `/Users/{admin}/Items/{id}`
+- **Faux positifs titre** : supprimé — matching hash-only uniquement
+- **Hash perdu après suppression Radarr** : `source_hash` calculé AVANT, stocké dans cleanup_index
+- **Chemin Jellyfin ≠ disque** : `resolve_real_path()` essaie toutes les racines connues
+- **Release folder = toute la bibliothèque** : fix → parent du fichier trouvé
+- **library_root écrasé à vide** : `routes.py` garde la valeur existante si le form envoie vide
+- **Séries : path Jellyfin = dossier** : `resolve_real_path` accepte `os.path.isdir`
+- **Multi-tracker : 1 seul torrent stoppé** : `_stop_all_torrents` stoppe TOUS les torrents correspondants
+- **Radarr lien vers "film introuvable"** : correction `movie['id']` → `movie['tmdbId']`
+- **Tracker URL non extraite** : regex cherche URL n'importe où dans le texte du comment, pas juste au début
+- **Tracker vide si comment absent** : fallback sur `trackers[].announce`
 
 ## Webhook Jellyfin
 
-Plugin **Webhook** → `http://192.168.1.38:7979/webhook/jellyfin`  
+Plugin **Webhook** → `http://192.168.1.38:7979/webhook/jellyfin`
 Événement : `PlaybackStop`
 
 ## Service systemd (à créer)

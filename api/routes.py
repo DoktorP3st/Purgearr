@@ -332,6 +332,21 @@ def api_status():
     }
 
 
+@router.get("/api/config/service-links")
+def api_service_links():
+    """Retourne les URLs des services pour les liens de la sidebar."""
+    cfg = get_config()
+    trans = cfg.get("transmission", {})
+    trans_host = (trans.get("host") or "").strip()
+    trans_port = trans.get("port", 9091)
+    return {
+        "radarr":       cfg.get("radarr", {}).get("url", "").rstrip("/") or None,
+        "sonarr":       cfg.get("sonarr", {}).get("url", "").rstrip("/") or None,
+        "transmission": f"http://{trans_host}:{trans_port}/" if trans_host else None,
+        "jellyfin":     cfg.get("jellyfin", {}).get("url", "").rstrip("/") or None,
+    }
+
+
 @router.post("/api/queue/{item_id}/cancel")
 def cancel_queue(item_id: int, db: Session = Depends(get_db)):
     item = db.query(DeletionQueue).filter(DeletionQueue.id == item_id, DeletionQueue.status == "pending").first()
@@ -654,17 +669,19 @@ def api_scan_copies(
     # ── Liens vers les services ────────────────────────────────────────────────
     cfg_s = get_config()
     service_links: dict = {}
+    service_link_errors: dict = {}
     provider_ids = it.get("ProviderIds", {})
 
-    # Jellyfin — lien direct vers la fiche
+    # Jellyfin — lien direct vers la fiche (toujours disponible si configuré)
     jf_base = cfg_s.get("jellyfin", {}).get("url", "").rstrip("/")
     if jf_base and jellyfin_item_id:
         service_links["jellyfin"] = f"{jf_base}/web/index.html#!/details?id={jellyfin_item_id}"
 
-    # Radarr — page du film (ID interne Radarr)
-    if item_type == "Movie":
-        radarr_base = cfg_s.get("radarr", {}).get("url", "").rstrip("/")
-        if radarr_base:
+    # Radarr — fallback accueil, puis essaye la page exacte du film
+    radarr_base = cfg_s.get("radarr", {}).get("url", "").rstrip("/")
+    if radarr_base:
+        service_links["radarr"] = radarr_base + "/"
+        if item_type == "Movie":
             try:
                 radarr = get_radarr()
                 movie = (
@@ -673,38 +690,95 @@ def api_scan_copies(
                     or radarr.find_by_title(item_title)
                 )
                 if movie:
-                    service_links["radarr"] = f"{radarr_base}/movie/{movie['id']}"
-            except Exception:
-                pass
+                    tmdb_id = movie.get("tmdbId") or movie.get("id")
+                    service_links["radarr"] = f"{radarr_base}/movie/{tmdb_id}"
+            except Exception as e:
+                service_link_errors["radarr"] = str(e)
 
-    # Sonarr — page de la série (titleSlug)
-    elif item_type in ("Episode", "Series"):
-        sonarr_base = cfg_s.get("sonarr", {}).get("url", "").rstrip("/")
-        if sonarr_base:
+    # Sonarr — fallback accueil, puis essaye la page exacte de la série
+    sonarr_base = cfg_s.get("sonarr", {}).get("url", "").rstrip("/")
+    if sonarr_base:
+        service_links["sonarr"] = sonarr_base + "/"
+        if item_type in ("Episode", "Series"):
             try:
                 sonarr = get_sonarr()
                 series_obj = sonarr.find_by_title(series_title or item_title)
                 if series_obj:
                     slug = series_obj.get("titleSlug") or str(series_obj.get("id", ""))
                     service_links["sonarr"] = f"{sonarr_base}/series/{slug}"
-            except Exception:
-                pass
+            except Exception as e:
+                service_link_errors["sonarr"] = str(e)
 
     # Transmission — TOUS les torrents correspondants (multi-tracker)
+    debug_trans_comments: list = []
     try:
+        from urllib.parse import urlparse as _urlparse
+
+        def _parse_tracker(comment: str):
+            """Extrait (tracker_name, tracker_url) depuis le commentaire du torrent.
+            L'URL peut être n'importe où dans le texte (précédée de texte libre)."""
+            import re as _re
+            c = (comment or "").strip()
+            if not c:
+                return "", ""
+            try:
+                # Cherche la première URL http/https/udp dans le texte
+                m = _re.search(r'(https?://|udp://)\S+', c, _re.IGNORECASE)
+                if not m:
+                    return "", ""
+                url = m.group(0).rstrip('.,;)')  # retire ponctuation finale éventuelle
+                p = _urlparse(url)
+                domain = p.netloc.split(":")[0]  # supprime le port si présent
+                if not domain:
+                    return "", ""
+                # URL d'annonce ou protocole UDP → lien vers l'accueil du tracker
+                if url.lower().startswith("udp://") or "/announce" in p.path.lower():
+                    return domain, f"https://{domain}/"
+                # URL directe vers la page du torrent → utilise l'URL complète
+                return domain, url
+            except Exception:
+                return "", ""
+
+        def _get_tracker_info(t: dict):
+            """Cherche tracker dans comment, puis fallback sur la liste trackers."""
+            comment = (t.get("comment") or "").strip()
+            if comment:
+                tname, turl = _parse_tracker(comment)
+                if tname:
+                    return tname, turl
+            for tr_obj in (t.get("trackers") or []):
+                announce = (tr_obj.get("announce") or "").strip()
+                if announce:
+                    tname, turl = _parse_tracker(announce)
+                    if tname:
+                        return tname, turl
+            return "", ""
+
         tr = get_transmission()
         torrents = tr.find_all_by_path_or_name(file_path, series_title or item_title)
         if torrents:
-            service_links["transmission_torrents"] = [
-                {
-                    "name":    t.get("name", ""),
-                    "comment": (t.get("comment") or "").strip()
-                               if (t.get("comment") or "").strip().startswith("http") else "",
-                }
-                for t in torrents
-            ]
-    except Exception:
-        pass
+            torrents_info = []
+            for t in torrents:
+                raw_comment = (t.get("comment") or "").strip()
+                # Debug : commentaire ou premier announce si commentaire vide
+                if raw_comment:
+                    debug_entry = raw_comment[:100]
+                else:
+                    first_announce = next(
+                        ((tr_obj.get("announce") or "") for tr_obj in (t.get("trackers") or []) if tr_obj.get("announce")),
+                        ""
+                    )
+                    debug_entry = f"[tracker] {first_announce[:80]}" if first_announce else "(vide)"
+                debug_trans_comments.append(debug_entry)
+                tname, turl = _get_tracker_info(t)
+                torrents_info.append({
+                    "name":         t.get("name", ""),
+                    "tracker_name": tname,
+                    "tracker_url":  turl,
+                })
+            service_links["transmission_torrents"] = torrents_info
+    except Exception as e:
+        service_link_errors["transmission"] = str(e)
 
     result["service_links"] = service_links
 
@@ -719,6 +793,9 @@ def api_scan_copies(
         "hash_prefix":   result.get("source_hash", "")[:12] or "(aucun)",
         "scan_paths":    scan_paths,
         "jf_error":      jf_error or None,
+        "service_links":        {k: (v if isinstance(v, str) else f"[{len(v)} torrents, {sum(1 for t in v if t.get('tracker_url'))} avec lien tracker]") for k, v in service_links.items()},
+        "link_errors":          service_link_errors or None,
+        "transmission_comments": debug_trans_comments or None,
     }
     return JSONResponse(result)
 
