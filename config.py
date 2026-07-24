@@ -114,6 +114,10 @@ def get_logs_config() -> Dict[str, Any]:
     }
 
 
+def get_language() -> str:
+    return get_config().get("language", "fr")
+
+
 def get_mode() -> str:
     return get_rules().get("mode", "manual")
 

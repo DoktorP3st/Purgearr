@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% set active = "logs" %}
 
-{% block title %} — Logs{% endblock %}
-{% block page_title %}Journal événementiel{% endblock %}
+{% block title %} — {{ t('logs.title') }}{% endblock %}
+{% block page_title %}{{ t('logs.title') }}{% endblock %}
 
 {% block topbar_actions %}
 <div style="display:flex;gap:8px;align-items:center">
   <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
-    <input type="checkbox" id="auto-refresh"> auto-refresh 10s
+    <input type="checkbox" id="auto-refresh"> {{ t('logs.auto_refresh') }}
   </label>
   <button class="btn btn-ghost" onclick="refreshLogs()" style="font-size:13px">
-    🔄 Rafraîchir
+    🔄 {{ t('logs.refresh_btn') }}
   </button>
   <button class="btn btn-danger" onclick="purgeLogs()" style="font-size:13px">
-    🗑️ Vider
+    🗑️ {{ t('logs.clear_btn') }}
   </button>
 </div>
 {% endblock %}
@@ -23,9 +23,9 @@
 {% if not logs_enabled %}
 <div class="section" style="background:rgba(245,158,11,0.1);border-color:var(--warning)">
   <div style="padding:12px 16px;color:var(--warning);font-size:13px">
-    ⚠ Le journal est <b>désactivé</b> — activez-le dans
-    <a href="/settings" style="color:var(--warning);text-decoration:underline">Paramètres</a>
-    pour capturer les événements.
+    ⚠ {{ t('logs.disabled_warning') | safe }}
+    <a href="/settings" style="color:var(--warning);text-decoration:underline">{{ t('logs.settings_link') }}</a>
+    {{ t('logs.capture_msg') }}
   </div>
 </div>
 {% endif %}
@@ -35,19 +35,19 @@
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
     <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:22px;font-weight:700;color:var(--accent)" id="stat-total">{{ stats.total }}</div>
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Total</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">{{ t('logs.stat_total') }}</div>
     </div>
     <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:22px;font-weight:700;color:var(--danger)" id="stat-errors">{{ stats.by_level.error }}</div>
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Erreurs</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">{{ t('logs.stat_errors') }}</div>
     </div>
     <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:22px;font-weight:700;color:var(--warning)" id="stat-warnings">{{ stats.by_level.warning }}</div>
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Warnings</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">{{ t('logs.stat_warnings') }}</div>
     </div>
     <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
       <div style="font-size:22px;font-weight:700;color:var(--info)" id="stat-infos">{{ stats.by_level.info }}</div>
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Infos</div>
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">{{ t('logs.stat_infos') }}</div>
     </div>
   </div>
 </div>
@@ -58,7 +58,7 @@
     <select id="f-category" onchange="refreshLogs()"
             style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);
                    color:var(--text);border-radius:6px;font-size:13px;min-width:160px">
-      <option value="">Toutes catégories</option>
+      <option value="">{{ t('logs.all_categories') }}</option>
       {% for key, label in categories.items() %}
       <option value="{{ key }}">{{ label }} ({{ stats.by_category.get(key, 0) }})</option>
       {% endfor %}
@@ -67,13 +67,13 @@
     <select id="f-level" onchange="refreshLogs()"
             style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);
                    color:var(--text);border-radius:6px;font-size:13px;min-width:130px">
-      <option value="">Tous niveaux</option>
+      <option value="">{{ t('logs.all_levels') }}</option>
       {% for lvl in levels %}
       <option value="{{ lvl }}">{{ lvl }}</option>
       {% endfor %}
     </select>
 
-    <input type="text" id="f-search" placeholder="Rechercher dans le message…"
+    <input type="text" id="f-search" placeholder="{{ t('logs.search_placeholder') }}"
            oninput="debouncedRefresh()"
            style="flex:1;min-width:200px;padding:8px 12px;background:var(--surface);
                   border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:13px">
@@ -86,7 +86,7 @@
 <div class="section">
   <div id="logs-list" style="display:flex;flex-direction:column;gap:4px">
     <div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">
-      Chargement…
+      {{ t('logs.loading') }}
     </div>
   </div>
 
@@ -128,6 +128,14 @@ const LEVEL_COLORS = {
   error:   'var(--danger)',
 };
 
+const L_ALL_CAT   = {{ t('logs.all_categories') | tojson }};
+const L_ENTRIES   = {{ t('logs.entries_suffix') | tojson }};
+const L_NO_LOGS   = {{ t('logs.no_logs') | tojson }};
+const L_PAGE      = {{ t('logs.page_label') | tojson }};
+const L_PREV      = {{ t('logs.previous') | tojson }};
+const L_NEXT      = {{ t('logs.next') | tojson }};
+const L_ERR_LOAD  = {{ t('logs.error_loading') | tojson }};
+
 let currentOffset = 0;
 const PAGE_SIZE = 100;
 let _refreshTimer = null;
@@ -155,7 +163,7 @@ async function refreshLogs() {
     refreshStats();
   } catch (e) {
     document.getElementById('logs-list').innerHTML =
-      '<div style="color:var(--danger);padding:16px;text-align:center">✗ Erreur chargement</div>';
+      `<div style="color:var(--danger);padding:16px;text-align:center">${L_ERR_LOAD}</div>`;
   }
 }
 
@@ -167,10 +175,9 @@ async function refreshStats() {
     document.getElementById('stat-errors').textContent   = s.by_level.error || 0;
     document.getElementById('stat-warnings').textContent = s.by_level.warning || 0;
     document.getElementById('stat-infos').textContent    = s.by_level.info || 0;
-    // Refresh dropdown counts
     const catSel = document.getElementById('f-category');
     const current = catSel.value;
-    catSel.innerHTML = '<option value="">Toutes catégories</option>' +
+    catSel.innerHTML = `<option value="">${L_ALL_CAT}</option>` +
       Object.entries(CATEGORY_LABELS).map(([k, l]) =>
         `<option value="${k}">${l} (${s.by_category[k] || 0})</option>`
       ).join('');
@@ -181,10 +188,10 @@ async function refreshStats() {
 function renderLogs(data) {
   const list = document.getElementById('logs-list');
   const countEl = document.getElementById('f-count');
-  countEl.textContent = `${data.total} entrée(s)`;
+  countEl.textContent = `${data.total} ${L_ENTRIES}`;
 
   if (!data.entries.length) {
-    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">Aucun log</div>';
+    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">${L_NO_LOGS}</div>`;
     document.getElementById('logs-pagination').innerHTML = '';
     return;
   }
@@ -245,14 +252,14 @@ function renderPagination(data) {
   const max = Math.ceil(total / PAGE_SIZE);
 
   const prev = currentOffset > 0
-    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset - PAGE_SIZE})">‹ Précédent</button>`
-    : `<button class="btn btn-ghost btn-sm" disabled>‹ Précédent</button>`;
+    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset - PAGE_SIZE})">${L_PREV}</button>`
+    : `<button class="btn btn-ghost btn-sm" disabled>${L_PREV}</button>`;
   const next = currentOffset + PAGE_SIZE < total
-    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset + PAGE_SIZE})">Suivant ›</button>`
-    : `<button class="btn btn-ghost btn-sm" disabled>Suivant ›</button>`;
+    ? `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentOffset + PAGE_SIZE})">${L_NEXT}</button>`
+    : `<button class="btn btn-ghost btn-sm" disabled>${L_NEXT}</button>`;
 
   pg.innerHTML = `${prev}
-    <span style="padding:6px 12px;color:var(--text-muted);font-size:12px">Page ${cur} / ${max}</span>
+    <span style="padding:6px 12px;color:var(--text-muted);font-size:12px">${L_PAGE} ${cur} / ${max}</span>
     ${next}`;
 }
 
@@ -269,15 +276,14 @@ function formatTs(iso) {
 }
 
 async function purgeLogs() {
-  if (!confirm('Vider tout le journal ?')) return;
+  if (!confirm(LANG.logs_confirm_clear || 'Vider tout le journal ?')) return;
   const res = await fetch('/api/logs/purge', { method: 'POST' });
   const data = await res.json();
-  showToast(`✓ ${data.deleted} entrées supprimées`, 'success');
+  showToast(`✓ ${data.deleted} ${LANG.logs_entries_deleted || 'entrées supprimées'}`, 'success');
   currentOffset = 0;
   refreshLogs();
 }
 
-// Auto-refresh
 document.getElementById('auto-refresh').addEventListener('change', (e) => {
   if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
   if (e.target.checked) {

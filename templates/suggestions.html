@@ -1,31 +1,16 @@
 {% extends "base.html" %}
 {% set active = "suggestions" %}
 
-{% block title %} — Suggestions{% endblock %}
-{% block page_title %}Suggestions de nettoyage{% endblock %}
+{% block title %} — {{ t('suggestions.title') }}{% endblock %}
+{% block page_title %}{{ t('suggestions.title') }}{% endblock %}
 
 {% block content %}
 
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:28px">
-  <div class="stat-card purple">
-    <div class="label">Jamais regardés</div>
-    <div class="value">{{ never_watched | length }}</div>
-  </div>
-  <div class="stat-card orange">
-    <div class="label">Vus par certains seulement</div>
-    <div class="value">{{ partial_watched | length }}</div>
-  </div>
-  <div class="stat-card green">
-    <div class="label">Utilisateurs Jellyfin</div>
-    <div class="value">{{ users | length }}</div>
-  </div>
-</div>
-
 <!-- Jamais regardés -->
-<div class="section" style="margin-bottom:32px">
+<div class="section" style="margin-bottom:28px">
   <div class="section-header">
-    <h3>🚫 Jamais regardés — les plus anciens en premier</h3>
-    <span class="text-muted text-sm">{{ never_watched | length }} contenus · aucun utilisateur n'a regardé</span>
+    <h3>🚫 {{ t('suggestions.never_title') }}</h3>
+    <span class="text-muted text-sm">{{ never_watched | length }} {{ t('suggestions.contents') }}</span>
   </div>
 
   {% if never_watched %}
@@ -39,105 +24,9 @@
 
         <div class="poster-badges">
           {% if item.type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
           {% else %}
-            <span class="badge badge-episode">Série</span>
-          {% endif %}
-        </div>
-
-        <!-- Badge âge -->
-        {% if item.age %}
-        <div style="position:absolute;bottom:6px;right:6px;
-                    background:rgba(0,0,0,0.75);border-radius:6px;
-                    padding:2px 7px;font-size:11px;font-weight:700;color:var(--warning)">
-          {{ item.age }}
-        </div>
-        {% endif %}
-
-        <!-- Badge seeding -->
-        {% if item.seed.found %}
-          {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}
-          <div class="seed-badge seed-active" title="Seeding actif — {{ item.seed.peers_up }} pair(s) — {{ item.seed.uploaded_gb }} Go envoyés">
-            🔥 R:{{ item.seed.ratio }}
-          </div>
-          {% elif item.seed.ratio > 0 %}
-          <div class="seed-badge seed-done" title="Torrent terminé — ratio {{ item.seed.ratio }} — {{ item.seed.uploaded_gb }} Go envoyés">
-            💤 R:{{ item.seed.ratio }}
-          </div>
-          {% else %}
-          <div class="seed-badge seed-dead" title="Ratio 0 — rien envoyé">
-            💀 R:0
-          </div>
-          {% endif %}
-        {% else %}
-        <div class="seed-badge seed-unknown" title="Torrent non trouvé dans Transmission">?</div>
-        {% endif %}
-
-        <!-- Barre 0% -->
-        <div class="poster-progress"><div class="poster-progress-bar" style="width:0%;background:var(--text-muted)"></div></div>
-      </div>
-
-      <div class="poster-info">
-        <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
-        <div class="poster-pct text-muted text-sm">
-          Ajouté le {{ item.date_added or '—' }}
-        </div>
-        <div class="text-sm" style="color:var(--danger);margin-top:2px">
-          👁️ 0 / {{ item.total_users }} utilisateurs
-        </div>
-      </div>
-
-      <div class="poster-overlay">
-        <div style="text-align:center;padding:12px">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">
-            Jamais regardé · Ajouté {{ item.date_added or '—' }}
-          </div>
-          {% if item.seed.found %}
-          <div style="font-size:11px;margin-bottom:8px;
-            {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}color:var(--success)
-            {% elif item.seed.ratio > 0 %}color:var(--warning)
-            {% else %}color:var(--danger){% endif %}">
-            Ratio {{ item.seed.ratio }} · {{ item.seed.uploaded_gb }} Go envoyés
-          </div>
-          {% endif %}
-          <button class="btn btn-danger btn-sm delete-btn"
-            data-id="{{ item.id }}"
-            data-type="{{ item.type }}"
-            data-title="{{ item.title | e }}">
-            🗑️ Supprimer
-          </button>
-        </div>
-      </div>
-
-    </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty">Tout a été regardé par au moins un utilisateur 👍</div>
-  {% endif %}
-</div>
-
-<!-- Vus partiellement -->
-{% if partial_watched %}
-<div class="section">
-  <div class="section-header">
-    <h3>👥 Vus par certains utilisateurs seulement</h3>
-    <span class="text-muted text-sm">{{ partial_watched | length }} contenus</span>
-  </div>
-
-  <div class="poster-grid" style="padding:20px">
-    {% for item in partial_watched %}
-    <div class="poster-card" id="scard-{{ item.id }}">
-
-      <div class="poster-img-wrap">
-        <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
-             onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
-
-        <div class="poster-badges">
-          {% if item.type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
-          {% else %}
-            <span class="badge badge-episode">Série</span>
+            <span class="badge badge-episode">{{ t('common.serie') }}</span>
           {% endif %}
         </div>
 
@@ -152,20 +41,116 @@
         <!-- Badge seeding -->
         {% if item.seed.found %}
           {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}
-          <div class="seed-badge seed-active" title="Seeding actif — {{ item.seed.peers_up }} pair(s) — {{ item.seed.uploaded_gb }} Go envoyés">
+          <div class="seed-badge seed-active" title="{{ t('suggestions.seed_active_title') }} — {{ item.seed.peers_up }} pair(s) — {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}">
             🔥 R:{{ item.seed.ratio }}
           </div>
           {% elif item.seed.ratio > 0 %}
-          <div class="seed-badge seed-done" title="Torrent terminé — ratio {{ item.seed.ratio }} — {{ item.seed.uploaded_gb }} Go envoyés">
+          <div class="seed-badge seed-done" title="{{ t('suggestions.seed_done_title') }} {{ item.seed.ratio }} — {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}">
             💤 R:{{ item.seed.ratio }}
           </div>
           {% else %}
-          <div class="seed-badge seed-dead" title="Ratio 0 — rien envoyé">
+          <div class="seed-badge seed-dead" title="{{ t('suggestions.seed_dead_title') }}">
             💀 R:0
           </div>
           {% endif %}
         {% else %}
-        <div class="seed-badge seed-unknown" title="Torrent non trouvé dans Transmission">?</div>
+        <div class="seed-badge seed-unknown" title="{{ t('suggestions.seed_unknown_title') }}">?</div>
+        {% endif %}
+
+        <div class="poster-progress">
+          <div class="poster-progress-bar" style="width:0%;background:var(--text-muted)"></div>
+        </div>
+      </div>
+
+      <div class="poster-info">
+        <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
+        <div class="poster-pct text-muted text-sm">
+          {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
+        </div>
+        <div class="text-sm" style="color:var(--danger);margin-top:2px">
+          👁️ 0 / {{ item.total_users }} {{ t('suggestions.users_label') }}
+        </div>
+      </div>
+
+      <div class="poster-overlay">
+        <div style="text-align:center;padding:12px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">
+            {{ t('suggestions.never_watched') }} · {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
+          </div>
+          {% if item.seed.found %}
+          <div style="font-size:11px;margin-bottom:8px;
+            {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}color:var(--success)
+            {% elif item.seed.ratio > 0 %}color:var(--warning)
+            {% else %}color:var(--danger){% endif %}">
+            {{ t('suggestions.ratio_label') }} {{ item.seed.ratio }} · {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}
+          </div>
+          {% endif %}
+          <button class="btn btn-danger btn-sm delete-btn"
+            data-id="{{ item.id }}"
+            data-type="{{ item.type }}"
+            data-title="{{ item.title | e }}">
+            🗑️ {{ t('suggestions.delete_btn') }}
+          </button>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">{{ t('suggestions.all_watched') }}</div>
+  {% endif %}
+</div>
+
+<!-- Vus partiellement -->
+{% if partial_watched %}
+<div class="section">
+  <div class="section-header">
+    <h3>👥 {{ t('suggestions.partial_title') }}</h3>
+    <span class="text-muted text-sm">{{ partial_watched | length }} {{ t('suggestions.contents') }}</span>
+  </div>
+
+  <div class="poster-grid" style="padding:20px">
+    {% for item in partial_watched %}
+    <div class="poster-card" id="scard-{{ item.id }}">
+
+      <div class="poster-img-wrap">
+        <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
+             onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
+
+        <div class="poster-badges">
+          {% if item.type == "Movie" %}
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
+          {% else %}
+            <span class="badge badge-episode">{{ t('common.serie') }}</span>
+          {% endif %}
+        </div>
+
+        {% if item.age %}
+        <div style="position:absolute;bottom:6px;right:6px;
+                    background:rgba(0,0,0,0.75);border-radius:6px;
+                    padding:2px 7px;font-size:11px;font-weight:700;color:var(--accent)">
+          {{ item.age }}
+        </div>
+        {% endif %}
+
+        <!-- Badge seeding -->
+        {% if item.seed.found %}
+          {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}
+          <div class="seed-badge seed-active" title="{{ t('suggestions.seed_active_title') }} — {{ item.seed.peers_up }} pair(s) — {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}">
+            🔥 R:{{ item.seed.ratio }}
+          </div>
+          {% elif item.seed.ratio > 0 %}
+          <div class="seed-badge seed-done" title="{{ t('suggestions.seed_done_title') }} {{ item.seed.ratio }} — {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}">
+            💤 R:{{ item.seed.ratio }}
+          </div>
+          {% else %}
+          <div class="seed-badge seed-dead" title="{{ t('suggestions.seed_dead_title') }}">
+            💀 R:0
+          </div>
+          {% endif %}
+        {% else %}
+        <div class="seed-badge seed-unknown" title="{{ t('suggestions.seed_unknown_title') }}">?</div>
         {% endif %}
 
         <!-- Barre partielle -->
@@ -178,33 +163,33 @@
 
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
-        <div class="poster-pct text-muted text-sm">Ajouté {{ item.date_added or '—' }}</div>
+        <div class="poster-pct text-muted text-sm">{{ t('suggestions.added_label') }} {{ item.date_added or '—' }}</div>
         <div class="text-sm" style="color:var(--warning);margin-top:2px">
-          👁️ {{ item.watch_count }} / {{ item.total_users }} utilisateurs
+          👁️ {{ item.watch_count }} / {{ item.total_users }} {{ t('suggestions.users_label') }}
         </div>
       </div>
 
       <div class="poster-overlay">
         <div style="text-align:center;padding:12px">
           <div style="font-size:12px;color:var(--warning);margin-bottom:4px">
-            Vu par {{ item.watch_count }}/{{ item.total_users }} users
+            {{ t('suggestions.watched_by') }} {{ item.watch_count }}/{{ item.total_users }} {{ t('suggestions.users_short') }}
           </div>
           {% if item.seed.found %}
           <div style="font-size:11px;margin-bottom:6px;
             {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}color:var(--success)
             {% elif item.seed.ratio > 0 %}color:var(--warning)
             {% else %}color:var(--danger){% endif %}">
-            Ratio {{ item.seed.ratio }} · {{ item.seed.uploaded_gb }} Go envoyés
+            {{ t('suggestions.ratio_label') }} {{ item.seed.ratio }} · {{ item.seed.uploaded_gb }} {{ t('suggestions.uploaded_gb') }}
           </div>
           {% endif %}
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">
-            Ajouté {{ item.date_added or '—' }}
+            {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
           </div>
           <button class="btn btn-danger btn-sm delete-btn"
             data-id="{{ item.id }}"
             data-type="{{ item.type }}"
             data-title="{{ item.title | e }}">
-            🗑️ Supprimer quand même
+            🗑️ {{ t('suggestions.delete_anyway') }}
           </button>
         </div>
       </div>

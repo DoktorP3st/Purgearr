@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% set active = "history" %}
 
-{% block title %} — Historique{% endblock %}
-{% block page_title %}Historique des suppressions{% endblock %}
+{% block title %} — {{ t('history.title') }}{% endblock %}
+{% block page_title %}{{ t('history.title') }}{% endblock %}
 
 {% block topbar_actions %}
 <button class="btn btn-ghost" onclick="openRemainsModal()"
         style="font-size:13px;display:flex;align-items:center;gap:6px">
-  🔍 Scanner les restes
+  🔍 {{ t('history.rescan_btn') }}
 </button>
 {% endblock %}
 
@@ -15,34 +15,34 @@
 
 <div class="section">
   <div class="section-header">
-    <h3>{{ items | length }} suppression(s)</h3>
+    <h3>{{ items | length }} {{ t('history.count') }}</h3>
   </div>
   {% if items %}
   <table>
     <thead>
       <tr>
-        <th>Titre</th>
-        <th>Type</th>
-        <th>Services</th>
-        <th>Total libéré</th>
-        <th>Date</th>
-        <th>Statut</th>
+        <th>{{ t('history.col_title') }}</th>
+        <th>{{ t('history.col_type') }}</th>
+        <th>{{ t('history.col_services') }}</th>
+        <th>{{ t('history.col_freed') }}</th>
+        <th>{{ t('history.col_date') }}</th>
+        <th>{{ t('history.col_status') }}</th>
       </tr>
     </thead>
     <tbody>
       {% for item in items %}
       <tr onclick="openHistoryDetail({{ loop.index0 }})"
           data-idx="{{ loop.index0 }}"
-          style="cursor:pointer" title="Cliquer pour voir le détail">
+          style="cursor:pointer" title="{{ t('history.row_tooltip') }}">
         <td>
           <span style="font-weight:500">{{ item.item_title }}</span>
           {% if item.series_title %}<div style="font-size:11px;color:var(--text-muted)">{{ item.series_title }}</div>{% endif %}
         </td>
         <td>
           {% if item.item_type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
           {% else %}
-            <span class="badge badge-episode">Épisode</span>
+            <span class="badge badge-episode">{{ t('common.episode') }}</span>
           {% endif %}
         </td>
         <td>
@@ -59,9 +59,9 @@
         <td class="text-sm text-muted">{{ item.deleted_at.strftime("%d/%m/%Y %H:%M") }}</td>
         <td>
           {% if item.error %}
-            <span style="color:var(--warning)" title="{{ item.error }}">⚠ Partiel</span>
+            <span style="color:var(--warning)" title="{{ item.error }}">⚠ {{ t('history.status_partial') }}</span>
           {% else %}
-            <span style="color:var(--success)">✓ OK</span>
+            <span style="color:var(--success)">✓ {{ t('history.status_ok') }}</span>
           {% endif %}
         </td>
       </tr>
@@ -69,7 +69,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty">Aucune suppression enregistrée</div>
+  <div class="empty">{{ t('history.empty') }}</div>
   {% endif %}
 </div>
 
@@ -98,7 +98,7 @@ const HISTORY_META = [
               padding:24px;width:660px;max-width:96vw;max-height:88vh;overflow-y:auto">
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <h3 style="font-size:16px" id="hd-title">Détail</h3>
+      <h3 style="font-size:16px" id="hd-title">{{ t('history.detail_title') }}</h3>
       <button onclick="document.getElementById('history-detail-modal').style.display='none'"
               class="btn btn-ghost btn-sm">✕</button>
     </div>
@@ -107,15 +107,15 @@ const HISTORY_META = [
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:700;color:var(--warning)" id="hd-source-size">—</div>
-        <div style="font-size:11px;color:var(--text-muted)">Fichier source</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('history.stat_source') }}</div>
       </div>
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:700;color:var(--info)" id="hd-copies">—</div>
-        <div style="font-size:11px;color:var(--text-muted)">Copies supprimées</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('history.stat_copies') }}</div>
       </div>
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:18px;font-weight:700;color:var(--success)" id="hd-total">—</div>
-        <div style="font-size:11px;color:var(--text-muted)">Total libéré</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('history.stat_total') }}</div>
       </div>
     </div>
 
@@ -124,7 +124,7 @@ const HISTORY_META = [
                 margin-bottom:16px;max-height:300px;overflow-y:auto">
       <div style="font-size:10px;color:var(--text-muted);font-weight:600;
                   text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">
-        Ce qui a été supprimé
+        {{ t('history.what_deleted') }}
       </div>
       <ul id="hd-list" style="list-style:none;padding:0"></ul>
     </div>
@@ -133,7 +133,7 @@ const HISTORY_META = [
     <div id="hd-path-section" style="display:none;font-size:11px;color:var(--text-muted);
          font-family:monospace;background:var(--surface);padding:10px 12px;border-radius:6px;
          word-break:break-all;margin-bottom:12px">
-      <span style="opacity:0.6">Fichier : </span><span id="hd-path"></span>
+      <span style="opacity:0.6">{{ t('history.file_label') }} </span><span id="hd-path"></span>
     </div>
 
     <!-- Erreur éventuelle -->
@@ -144,7 +144,7 @@ const HISTORY_META = [
     <div style="text-align:right">
       <button class="btn btn-ghost"
               onclick="document.getElementById('history-detail-modal').style.display='none'">
-        Fermer
+        {{ t('common.close') }}
       </button>
     </div>
   </div>
@@ -157,7 +157,7 @@ const HISTORY_META = [
               padding:24px;width:700px;max-width:96vw;max-height:88vh;overflow-y:auto">
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <h3 style="font-size:16px">🔍 Scan des restes</h3>
+      <h3 style="font-size:16px">🔍 {{ t('history.scan_title') }}</h3>
       <button onclick="document.getElementById('remains-modal').style.display='none'"
               class="btn btn-ghost btn-sm">✕</button>
     </div>
@@ -165,8 +165,8 @@ const HISTORY_META = [
     <!-- Scanning -->
     <div id="rm-scanning" style="text-align:center;padding:40px 0">
       <div style="font-size:36px;margin-bottom:14px">🔍</div>
-      <div style="color:var(--text-muted);font-size:13px">Analyse de l'index en cours…</div>
-      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">Comparaison par hash SHA-256</div>
+      <div style="color:var(--text-muted);font-size:13px">{{ t('history.scan_loading') }}</div>
+      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">{{ t('history.scan_loading_sub') }}</div>
     </div>
 
     <!-- Résultats -->
@@ -179,10 +179,10 @@ const HISTORY_META = [
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-ghost"
                 onclick="document.getElementById('remains-modal').style.display='none'">
-          Fermer
+          {{ t('common.close') }}
         </button>
         <button id="rm-purge-btn" class="btn btn-danger" onclick="purgeAll()" style="display:none">
-          🗑️ Tout supprimer
+          🗑️ {{ t('history.purge_btn') }}
         </button>
       </div>
     </div>
@@ -206,7 +206,6 @@ function openHistoryDetail(idx) {
   document.getElementById('hd-copies').textContent      = det.copies_deleted != null ? det.copies_deleted : '—';
   document.getElementById('hd-total').textContent       = det.total_freed_human || '—';
 
-  // Chemin source
   const pathSec = document.getElementById('hd-path-section');
   if (det.file_path) {
     document.getElementById('hd-path').textContent = det.file_path;
@@ -215,7 +214,6 @@ function openHistoryDetail(idx) {
     pathSec.style.display = 'none';
   }
 
-  // Erreur
   const errEl = document.getElementById('hd-error');
   if (meta.error) {
     errEl.textContent = '⚠ ' + meta.error;
@@ -224,41 +222,39 @@ function openHistoryDetail(idx) {
     errEl.style.display = 'none';
   }
 
-  // Liste services / torrents
   const list = document.getElementById('hd-list');
   list.innerHTML = '';
   const services = meta.services || [];
   const torrents = det.torrents || [];
-  const isMovie  = meta.type === 'Movie';
 
   if (services.includes('radarr')) {
-    _addHistoryRow(list, 'Radarr', 'Suppression du film + liste d\'exclusion', 'var(--info)', '📡', null);
+    _addHistoryRow(list, 'Radarr', LANG.radarr_action || 'Suppression du film + liste d\'exclusion', 'var(--info)', '📡', null);
   }
   if (services.includes('sonarr')) {
-    _addHistoryRow(list, 'Sonarr', 'Suppression épisode/série + liste d\'exclusion', 'var(--info)', '📡', null);
+    _addHistoryRow(list, 'Sonarr', LANG.sonarr_action || 'Suppression épisode/série + liste d\'exclusion', 'var(--info)', '📡', null);
   }
   if (torrents.length > 0) {
     torrents.forEach(t => {
-      const label  = t.tracker_name ? `Transmission — ${t.tracker_name}` : `Transmission — ${t.name}`;
-      const detail = t.name + ' · Seeding arrêté + torrent supprimé';
-      _addHistoryRow(list, label, detail, 'var(--info)', '⬇', t.tracker_url || null);
+      const lbl    = t.tracker_name ? `Transmission — ${t.tracker_name}` : `Transmission — ${t.name}`;
+      const detail = t.name + ' · ' + (LANG.trans_action || 'Seeding arrêté + torrent supprimé');
+      _addHistoryRow(list, lbl, detail, 'var(--info)', '⬇', t.tracker_url || null);
     });
   } else if (services.includes('transmission')) {
-    _addHistoryRow(list, 'Transmission', 'Seeding arrêté + torrent supprimé', 'var(--info)', '⬇', null);
+    _addHistoryRow(list, 'Transmission', LANG.trans_action || 'Seeding arrêté + torrent supprimé', 'var(--info)', '⬇', null);
   }
   if (services.includes('jellyfin')) {
-    _addHistoryRow(list, 'Jellyfin', 'Bibliothèque rafraîchie', 'var(--info)', '🎬', null);
+    _addHistoryRow(list, 'Jellyfin', LANG.jelly_action || 'Bibliothèque rafraîchie', 'var(--info)', '🎬', null);
   }
   if (det.copies_deleted > 0) {
     _addHistoryRow(
       list,
-      `${det.copies_deleted} copie(s) supprimée(s)`,
-      `${det.copies_size_human} libérés dans les chemins additionnels`,
+      `${det.copies_deleted} ${LANG.history_remains_deleted || 'copie(s) supprimée(s)'}`,
+      `${det.copies_size_human} ${LANG.history_remains_freed || 'libérés'}`,
       'var(--success)', '🗑️', null
     );
   }
   if (list.children.length === 0) {
-    list.innerHTML = '<li style="color:var(--text-muted);font-size:12px;padding:8px 0">Aucun détail disponible (suppression ancienne)</li>';
+    list.innerHTML = `<li style="color:var(--text-muted);font-size:12px;padding:8px 0">${LANG.history_no_details || 'Aucun détail disponible (suppression ancienne)'}</li>`;
   }
 
   document.getElementById('history-detail-modal').style.display = 'flex';
@@ -306,7 +302,7 @@ async function openRemainsModal() {
     renderRemainsResults(data);
   } catch (e) {
     document.getElementById('rm-scanning').innerHTML =
-      '<div style="color:var(--danger);font-size:13px">✗ Erreur lors du scan</div>';
+      `<div style="color:var(--danger);font-size:13px">${LANG.history_scan_error || '✗ Erreur lors du scan'}</div>`;
   }
 }
 
@@ -316,10 +312,10 @@ function renderRemainsResults(data) {
 
   const summary = document.getElementById('rm-summary');
   if (data.found === 0) {
-    summary.innerHTML = '<span style="color:var(--success)">✓ Aucun reste détecté — tout est propre</span>';
+    summary.innerHTML = `<span style="color:var(--success)">${LANG.history_no_remains || '✓ Aucun reste détecté — tout est propre'}</span>`;
     document.getElementById('rm-purge-btn').style.display = 'none';
   } else {
-    summary.innerHTML = `<span style="color:var(--warning)">⚠ ${data.found} item(s) avec des restes détectés</span>`;
+    summary.innerHTML = `<span style="color:var(--warning)">⚠ ${data.found} ${LANG.history_items_found || 'item(s) avec des restes détectés'}</span>`;
     document.getElementById('rm-purge-btn').style.display = 'inline-flex';
   }
 
@@ -331,7 +327,7 @@ function renderRemainsResults(data) {
     card.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px';
     const type = item.item_type === 'Movie' ? '🎬' : '📺';
     const label = item.series_title ? `${item.series_title} — ${item.item_title}` : item.item_title;
-    const date = new Date(item.deleted_at).toLocaleDateString('fr-FR');
+    const date = new Date(item.deleted_at).toLocaleDateString();
     let copiesList = (item.copies || []).map(c =>
       `<div style="font-family:monospace;font-size:11px;color:var(--text-muted);padding-left:12px">
          • ${esc(c.path)} — ${c.size_human} · ${c.file_count} fichier${c.file_count>1?'s':''}
@@ -342,13 +338,13 @@ function renderRemainsResults(data) {
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;margin-bottom:4px">${type} ${esc(label)}</div>
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">
-            Supprimé le ${date} · hash ${esc(item.source_hash)}… · ${item.total_copies} copie(s) · ${item.total_size}
+            ${LANG.history_suppressed_on || 'Supprimé le'} ${date} · hash ${esc(item.source_hash)}… · ${item.total_copies} ${LANG.history_remains_deleted || 'copie(s)'} · ${item.total_size}
           </div>
           ${copiesList}
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteRemains('${item.id}')"
                 id="rm-btn-${item.id}" style="flex-shrink:0;font-size:12px">
-          🗑️ Supprimer
+          🗑️ ${LANG.history_delete_btn || 'Supprimer'}
         </button>
       </div>`;
     list.appendChild(card);
@@ -368,37 +364,37 @@ async function deleteRemains(entryId) {
     if (data.copies_deleted > 0) {
       if (card) {
         card.innerHTML = `<div style="color:var(--success);font-size:13px">
-          ✓ ${data.copies_deleted} copie(s) supprimée(s) — ${data.size_human} libérés</div>`;
+          ✓ ${data.copies_deleted} ${LANG.history_remains_deleted || 'copie(s) supprimée(s)'} — ${data.size_human} ${LANG.history_remains_freed || 'libérés'}</div>`;
       }
-      showToast(`✓ Restes supprimés — ${data.size_human} libérés`, 'success');
+      showToast(`✓ ${data.copies_deleted} ${LANG.history_remains_deleted || 'copie(s) supprimée(s)'} — ${data.size_human} ${LANG.history_remains_freed || 'libérés'}`, 'success');
     } else {
       if (card) {
-        card.innerHTML = `<div style="color:var(--text-muted);font-size:13px">Aucun reste trouvé</div>`;
+        card.innerHTML = `<div style="color:var(--text-muted);font-size:13px">${LANG.history_no_remains_card || 'Aucun reste trouvé'}</div>`;
       }
     }
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Supprimer'; }
-    showToast('✗ Erreur lors de la suppression', 'danger');
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ ' + (LANG.history_delete_btn || 'Supprimer'); }
+    showToast('✗ ' + (LANG.history_delete_error || 'Erreur lors de la suppression'), 'danger');
   }
 }
 
 async function purgeAll() {
   const btn = document.getElementById('rm-purge-btn');
-  btn.disabled = true; btn.textContent = '⏳ Suppression…';
+  btn.disabled = true; btn.textContent = LANG.history_purging || '⏳ Suppression…';
   try {
     const res  = await fetch('/api/cleanup/purge-all', { method: 'POST' });
     const data = await res.json();
     document.getElementById('rm-list').innerHTML =
       `<div style="color:var(--success);font-size:13px;padding:16px 0">
-         ✓ ${data.copies_deleted} copie(s) supprimée(s) — ${data.size_human} libérés
+         ✓ ${data.copies_deleted} ${LANG.history_remains_deleted || 'copie(s) supprimée(s)'} — ${data.size_human} ${LANG.history_remains_freed || 'libérés'}
        </div>`;
     document.getElementById('rm-summary').innerHTML =
-      '<span style="color:var(--success)">✓ Nettoyage terminé</span>';
+      `<span style="color:var(--success)">✓ ${LANG.history_cleaned || 'Nettoyage terminé'}</span>`;
     btn.style.display = 'none';
-    showToast(`✓ ${data.copies_deleted} reste(s) supprimés — ${data.size_human} libérés`, 'success');
+    showToast(`✓ ${data.copies_deleted} ${LANG.history_remains_deleted || 'copie(s) supprimée(s)'} — ${data.size_human} ${LANG.history_remains_freed || 'libérés'}`, 'success');
   } catch (e) {
-    btn.disabled = false; btn.textContent = '🗑️ Tout supprimer';
-    showToast('✗ Erreur lors du nettoyage', 'danger');
+    btn.disabled = false; btn.textContent = LANG.history_purge_all || '🗑️ Tout supprimer';
+    showToast('✗ ' + (LANG.history_delete_error || 'Erreur lors du nettoyage'), 'danger');
   }
 }
 </script>

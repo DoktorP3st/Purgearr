@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% set active = "watched" %}
 
-{% block title %} — Regardés{% endblock %}
-{% block page_title %}Contenus regardés{% endblock %}
+{% block title %} — {{ t('watched.title') }}{% endblock %}
+{% block page_title %}{{ t('watched.title') }}{% endblock %}
 
 {% block topbar_actions %}
 <div style="display:flex;gap:8px;align-items:center">
@@ -18,8 +18,8 @@
 
 {% if mode != 'auto' %}
 <div class="alert alert-info" style="margin-bottom:20px">
-  🖱️ Mode <strong>Manuel</strong> — supprime ce que tu veux.
-  <a href="/api/set-mode/auto" style="color:var(--accent);margin-left:8px">Passer en Auto →</a>
+  🖱️ Mode <strong>{{ t('settings.mode_manual') }}</strong> — {{ t('watched.mode_manual_suffix') }}
+  <a href="/api/set-mode/auto" style="color:var(--accent);margin-left:8px">{{ t('watched.mode_manual_link') }}</a>
 </div>
 {% endif %}
 
@@ -27,35 +27,35 @@
 <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
 
   <select name="media_type" onchange="applyFilter('media_type', this.value)" style="width:160px">
-    <option value=""        {% if not media_type          %}selected{% endif %}>Films + Séries</option>
-    <option value="Movie"   {% if media_type == 'Movie'   %}selected{% endif %}>Films</option>
-    <option value="Episode" {% if media_type == 'Episode' %}selected{% endif %}>Épisodes</option>
+    <option value=""        {% if not media_type          %}selected{% endif %}>{{ t('watched.filter_all') }}</option>
+    <option value="Movie"   {% if media_type == 'Movie'   %}selected{% endif %}>{{ t('watched.filter_movies') }}</option>
+    <option value="Episode" {% if media_type == 'Episode' %}selected{% endif %}>{{ t('watched.filter_episodes') }}</option>
   </select>
 
   <div style="display:flex;gap:6px">
     <a href="/watched?media_type={{ media_type }}&ready_filter="
        class="btn btn-sm {% if not ready_filter %}btn-primary{% else %}btn-ghost{% endif %}">
-      Tous ({{ items | length }})
+      {{ t('watched.filter_all') }} ({{ items | length }})
     </a>
     <a href="/watched?media_type={{ media_type }}&ready_filter=ready"
        class="btn btn-sm {% if ready_filter == 'ready' %}btn-primary{% else %}btn-ghost{% endif %}"
        style="{% if ready_filter == 'ready' %}background:var(--success){% endif %}">
-      ✅ Prêts à supprimer ({{ ready_count }})
+      ✅ {{ t('watched.filter_ready') }} ({{ ready_count }})
     </a>
     <a href="/watched?media_type={{ media_type }}&ready_filter=waiting"
        class="btn btn-sm {% if ready_filter == 'waiting' %}btn-primary{% else %}btn-ghost{% endif %}"
        style="{% if ready_filter == 'waiting' %}background:var(--warning);color:#000{% endif %}">
-      ⏳ En attente ({{ waiting_count }})
+      ⏳ {{ t('watched.filter_waiting') }} ({{ waiting_count }})
     </a>
     <a href="/watched?media_type={{ media_type }}&ready_filter=fav"
        class="btn btn-sm {% if ready_filter == 'fav' %}btn-primary{% else %}btn-ghost{% endif %}">
-      ⭐ Favoris
+      ⭐ {{ t('watched.filter_fav') }}
     </a>
   </div>
 
   {% if required_uids %}
   <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
-    <span class="text-muted text-sm">Requis :</span>
+    <span class="text-muted text-sm">{{ t('watched.required_label') }}</span>
     {% for s in items[0].req_statuses if items %}
       <span class="user-avatar" style="background:var(--accent)" title="{{ s.name }}">{{ s.initial }}</span>
     {% endfor %}
@@ -77,28 +77,26 @@
 
       <div class="poster-badges">
         {% if item.type == "Movie" %}
-          <span class="badge badge-movie">Film</span>
+          <span class="badge badge-movie">{{ t('common.movie') }}</span>
         {% else %}
-          <span class="badge badge-episode">Série</span>
+          <span class="badge badge-episode">{{ t('common.serie') }}</span>
         {% endif %}
         {% if item.is_favorite %}<span>⭐</span>{% endif %}
       </div>
 
-      <!-- Indicateur readiness -->
       {% if not item.is_favorite %}
         {% if item.ready %}
-        <div class="ready-badge ready-ok" title="Tous les utilisateurs requis ont regardé">✓ Prêt</div>
+        <div class="ready-badge ready-ok" title="{{ t('watched.ready_badge') }}">✓ {{ t('watched.ready_badge') }}</div>
         {% elif item.req_statuses %}
-        <div class="ready-badge ready-wait" title="En attente d'autres utilisateurs">⏳</div>
+        <div class="ready-badge ready-wait" title="{{ t('watched.filter_waiting') }}">⏳</div>
         {% endif %}
       {% endif %}
 
-      <!-- Avatars utilisateurs requis -->
       {% if item.req_statuses %}
       <div class="poster-users">
         {% for s in item.req_statuses %}
         <span class="user-avatar {% if s.watched %}avatar-ok{% else %}avatar-wait{% endif %}"
-              title="{{ s.name }} — {% if s.watched %}✓ Regardé{% else %}✗ Pas encore{% endif %}">
+              title="{{ s.name }}">
           {{ s.initial }}
         </span>
         {% endfor %}
@@ -119,7 +117,7 @@
           </span>
         {% else %}{{ item.title }}{% endif %}
       </div>
-      <div class="poster-pct text-muted text-sm">Vu à {{ item.percentage | int }}%</div>
+      <div class="poster-pct text-muted text-sm">{{ t('watched.watched_label') }} {{ item.percentage | int }}%</div>
     </div>
 
     <!-- Overlay -->
@@ -127,7 +125,7 @@
     <div class="poster-overlay">
       <div style="text-align:center">
         <div style="font-size:28px">⭐</div>
-        <div style="font-size:12px;color:var(--warning);margin-top:6px">Favori — Protégé</div>
+        <div style="font-size:12px;color:var(--warning);margin-top:6px">{{ t('watched.favorite_protected') }}</div>
       </div>
     </div>
     {% else %}
@@ -146,7 +144,7 @@
           data-type="{{ item.type }}"
           data-title="{{ item.title | e }}"
           data-series="{{ (item.series_title or '') | e }}">
-          🗑️ Supprimer
+          🗑️ {{ t('watched.delete_btn') }}
         </button>
       </div>
     </div>
@@ -156,7 +154,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="section"><div class="empty">Aucun contenu trouvé avec ces filtres</div></div>
+<div class="section"><div class="empty">{{ t('watched.no_results') }}</div></div>
 {% endif %}
 
 {% endblock %}

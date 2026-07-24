@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ t('nav.dashboard') | lower }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,21 +11,21 @@
 <aside class="sidebar">
   <div class="sidebar-logo">
     <h1>⚡ Purgearr</h1>
-    <small>Auto-suppression media</small>
+    <small>{{ t('sidebar.subtitle') }}</small>
   </div>
 
   <nav>
-    <a href="/"            class="{% if active == 'dashboard'   %}active{% endif %}">📊 Dashboard</a>
-    <a href="/watched"     class="{% if active == 'watched'     %}active{% endif %}">👁️ Regardés</a>
-    <a href="/suggestions" class="{% if active == 'suggestions' %}active{% endif %}">🧹 Suggestions</a>
-    <a href="/history"     class="{% if active == 'history'     %}active{% endif %}">🗑️ Historique</a>
-    <a href="/protected"   class="{% if active == 'protected'   %}active{% endif %}">🛡️ Protection</a>
-    <a href="/logs"        class="{% if active == 'logs'        %}active{% endif %}">📝 Logs</a>
-    <a href="/settings"    class="{% if active == 'settings'    %}active{% endif %}">⚙️ Paramètres</a>
+    <a href="/"            class="{% if active == 'dashboard'   %}active{% endif %}">📊 {{ t('nav.dashboard') }}</a>
+    <a href="/watched"     class="{% if active == 'watched'     %}active{% endif %}">👁️ {{ t('nav.watched') }}</a>
+    <a href="/suggestions" class="{% if active == 'suggestions' %}active{% endif %}">🧹 {{ t('nav.suggestions') }}</a>
+    <a href="/history"     class="{% if active == 'history'     %}active{% endif %}">🗑️ {{ t('nav.history') }}</a>
+    <a href="/protected"   class="{% if active == 'protected'   %}active{% endif %}">🛡️ {{ t('nav.protected') }}</a>
+    <a href="/logs"        class="{% if active == 'logs'        %}active{% endif %}">📝 {{ t('nav.logs') }}</a>
+    <a href="/settings"    class="{% if active == 'settings'    %}active{% endif %}">⚙️ {{ t('nav.settings') }}</a>
   </nav>
 
   <div class="sidebar-status">
-    <h4>Services</h4>
+    <h4>{{ t('sidebar.services') }}</h4>
     <div class="status-dot"><span class="dot" id="dot-radarr"></span> <a id="svc-radarr" href="#" target="_blank" style="color:inherit;text-decoration:none;cursor:default">Radarr</a></div>
     <div class="status-dot"><span class="dot" id="dot-sonarr"></span> <a id="svc-sonarr" href="#" target="_blank" style="color:inherit;text-decoration:none;cursor:default">Sonarr</a></div>
     <div class="status-dot"><span class="dot" id="dot-trans"></span> <a id="svc-trans" href="#" target="_blank" style="color:inherit;text-decoration:none;cursor:default">Transmission</a></div>
@@ -33,7 +33,7 @@
     <button id="sidebar-scan-btn" onclick="sidebarScan()"
             style="margin-top:12px;width:100%;padding:7px 0;border-radius:6px;border:1px solid var(--border);
                    background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;transition:all 0.15s">
-      🔄 Scan d'import
+      {{ t('sidebar.scan_import') }}
     </button>
   </div>
 </aside>
@@ -61,7 +61,7 @@
               padding:24px;width:660px;max-width:96vw;max-height:88vh;overflow-y:auto">
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <h3 style="font-size:16px">🗑️ Confirmer la suppression</h3>
+      <h3 style="font-size:16px">🗑️ {{ t('modal.confirm_title') }}</h3>
       <button onclick="document.getElementById('delete-confirm-modal').style.display='none'"
               class="btn btn-ghost btn-sm">✕</button>
     </div>
@@ -69,14 +69,14 @@
     <!-- État : scan en cours -->
     <div id="dc-scanning" style="text-align:center;padding:36px 0">
       <div style="font-size:36px;margin-bottom:14px">🔍</div>
-      <div style="color:var(--text-muted);font-size:13px">Analyse des chemins additionnels…</div>
-      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">Détection par inode et hash SHA-256</div>
+      <div style="color:var(--text-muted);font-size:13px">{{ t('modal.scanning') }}</div>
+      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">{{ t('modal.scanning_sub') }}</div>
     </div>
 
     <!-- État : résultats -->
     <div id="dc-results" style="display:none">
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
-        Contenu : <strong style="color:var(--text)" id="dc-title"></strong>
+        {{ t('common.content') }} : <strong style="color:var(--text)" id="dc-title"></strong>
       </div>
 
       <div id="dc-strategy" style="font-size:12px;padding:7px 12px;border-radius:6px;
@@ -85,15 +85,15 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
         <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:20px;font-weight:700;color:var(--accent)" id="dc-count">0</div>
-          <div style="font-size:11px;color:var(--text-muted)">Copies trouvées</div>
+          <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.copies_found') }}</div>
         </div>
         <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:20px;font-weight:700;color:var(--warning)" id="dc-total">—</div>
-          <div style="font-size:11px;color:var(--text-muted)">Fichier source</div>
+          <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.source_file') }}</div>
         </div>
         <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:20px;font-weight:700;color:var(--danger)" id="dc-files-total">—</div>
-          <div style="font-size:11px;color:var(--text-muted)">Total libéré</div>
+          <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.total_freed') }}</div>
         </div>
       </div>
 
@@ -101,7 +101,7 @@
                   margin-bottom:18px;max-height:260px;overflow-y:auto">
         <div style="font-size:10px;color:var(--text-muted);font-weight:600;
                     text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">
-          Ce qui sera supprimé
+          {{ t('modal.to_delete') }}
         </div>
         <ul id="dc-list" style="list-style:none;padding:0"></ul>
       </div>
@@ -109,10 +109,10 @@
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-ghost"
                 onclick="document.getElementById('delete-confirm-modal').style.display='none'">
-          Annuler
+          {{ t('common.cancel') }}
         </button>
         <button class="btn btn-danger" onclick="confirmDelete()">
-          🗑️ Confirmer la suppression
+          🗑️ {{ t('modal.confirm_btn') }}
         </button>
       </div>
     </div>
@@ -120,7 +120,7 @@
     <!-- État : suppression en cours -->
     <div id="dc-processing" style="display:none;text-align:center;padding:36px 0">
       <div style="font-size:36px;margin-bottom:14px">⏳</div>
-      <div style="color:var(--text-muted);font-size:13px">Suppression en cours…</div>
+      <div style="color:var(--text-muted);font-size:13px">{{ t('modal.deleting') }}</div>
     </div>
   </div>
 </div>
@@ -131,34 +131,39 @@
   <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;
               padding:24px;width:580px;max-width:96vw;max-height:84vh;overflow-y:auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h3 style="font-size:15px">🧹 Rapport de nettoyage</h3>
+      <h3 style="font-size:15px">🧹 {{ t('modal.cleanup_title') }}</h3>
       <button onclick="document.getElementById('cleanup-modal').style.display='none'"
-              class="btn btn-ghost btn-sm">✕ Fermer</button>
+              class="btn btn-ghost btn-sm">✕ {{ t('common.close') }}</button>
     </div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
-      Contenu : <strong style="color:var(--text)" id="cm-title"></strong>
+      {{ t('common.content') }} : <strong style="color:var(--text)" id="cm-title"></strong>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px">
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--accent)" id="cm-found"></div>
-        <div style="font-size:11px;color:var(--text-muted)">Copies trouvées</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.copies_found') }}</div>
       </div>
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--success)" id="cm-deleted"></div>
-        <div style="font-size:11px;color:var(--text-muted)">Supprimées</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.copies_deleted') }}</div>
       </div>
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--info)" id="cm-files"></div>
-        <div style="font-size:11px;color:var(--text-muted)">Fichiers effacés</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.files_erased') }}</div>
       </div>
       <div style="background:var(--surface);border-radius:8px;padding:12px;text-align:center">
         <div style="font-size:22px;font-weight:700;color:var(--warning)" id="cm-size"></div>
-        <div style="font-size:11px;color:var(--text-muted)">Espace libéré</div>
+        <div style="font-size:11px;color:var(--text-muted)">{{ t('modal.space_freed') }}</div>
       </div>
     </div>
     <ul id="cm-list" style="list-style:none;padding:0"></ul>
   </div>
 </div>
+
+<!-- ── Strings JS traduits ── -->
+<script>
+const LANG = {{ lang_js() | tojson }};
+</script>
 
 <script>
 // ── Services ping + liens sidebar ─────────────────────────────────────────────
@@ -182,15 +187,15 @@ fetch('/api/config/service-links').then(r => r.json()).then(links => {
 
 function sidebarScan() {
   const btn = document.getElementById('sidebar-scan-btn');
-  btn.disabled = true; btn.textContent = '⏳ Scan…'; btn.style.color = 'var(--warning)';
+  btn.disabled = true; btn.textContent = LANG.sidebar_scanning || '⏳ Scan…'; btn.style.color = 'var(--warning)';
   fetch('/api/scan/import', { method: 'POST' })
     .then(r => r.json())
     .then(d => {
-      btn.textContent = `✓ ${d.movies}F · ${d.episodes}S importés`;
+      btn.textContent = `✓ ${d.movies}F · ${d.episodes}S ${LANG.imported || 'importés'}`;
       btn.style.color = 'var(--success)';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '🔄 Scan d\'import'; btn.style.color = 'var(--text-muted)'; }, 4000);
+      setTimeout(() => { btn.disabled = false; btn.textContent = LANG.sidebar_idle || '🔄 Scan d\'import'; btn.style.color = 'var(--text-muted)'; }, 4000);
     })
-    .catch(() => { btn.disabled = false; btn.textContent = '🔄 Scan d\'import'; btn.style.color = 'var(--text-muted)'; });
+    .catch(() => { btn.disabled = false; btn.textContent = LANG.sidebar_idle || '🔄 Scan d\'import'; btn.style.color = 'var(--text-muted)'; });
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
@@ -218,7 +223,6 @@ let _pendingDelete = null;
 
 async function deleteWithScan(id, type, title, seriesTitle, cardElemId) {
   const modal = document.getElementById('delete-confirm-modal');
-  // Ouvrir le modal en mode "scan en cours"
   document.getElementById('dc-scanning').style.display   = 'block';
   document.getElementById('dc-results').style.display    = 'none';
   document.getElementById('dc-processing').style.display = 'none';
@@ -237,7 +241,7 @@ async function deleteWithScan(id, type, title, seriesTitle, cardElemId) {
     _showScanResults(seriesTitle || title, scan);
   } catch (e) {
     modal.style.display = 'none';
-    showToast('✗ Erreur lors du scan des copies', 'danger');
+    showToast('✗ ' + (LANG.scan_error || 'Erreur lors du scan des copies'), 'danger');
     _pendingDelete = null;
   }
 }
@@ -249,7 +253,6 @@ function _showScanResults(label, scan) {
 
   document.getElementById('dc-title').textContent = label;
 
-  // Badge stratégie + diagnostic toujours accessible
   const strat = document.getElementById('dc-strategy');
   let dbg = '';
   if (scan._debug) {
@@ -258,81 +261,73 @@ function _showScanResults(label, scan) {
       ? Object.entries(d.service_links).map(([k,v]) =>
           `<div style="padding-left:12px">• ${k}: <span style="color:var(--success)">${String(v).substring(0,100)}</span></div>`
         ).join('')
-      : '<div style="padding-left:12px;color:var(--warning)">⚠ Aucun lien service construit — vérifiez les URLs dans Paramètres</div>';
+      : `<div style="padding-left:12px;color:var(--warning)">⚠ ${LANG.diag_no_links || '⚠ Aucun lien service construit — vérifiez les URLs dans Paramètres'}</div>`;
     const errHtml = (d.link_errors && Object.keys(d.link_errors).length)
-      ? '<div style="color:var(--danger)">Erreurs liens :</div>' +
+      ? `<div style="color:var(--danger)">${LANG.diag_link_errors || 'Erreurs liens :'}</div>` +
         Object.entries(d.link_errors).map(([k,v]) =>
           `<div style="padding-left:12px;color:var(--danger)">• ${k}: ${v}</div>`
         ).join('')
       : '';
     dbg = `<details style="margin-top:8px;font-size:11px;color:var(--text-muted)">
-      <summary style="cursor:pointer">🔍 Diagnostic</summary>
+      <summary style="cursor:pointer">🔍 ${LANG.diag_title || 'Diagnostic'}</summary>
       <div style="margin-top:6px;line-height:1.8;font-family:monospace">
-        <div>Path Jellyfin : <span style="color:var(--text-muted);font-size:10px">${d.jellyfin_path}</span></div>
-        <div>Path résolu : <span style="color:${d.file_exists?'var(--success)':'var(--danger)'}">${d.resolved_path}</span>${d.file_exists?' <b style="color:var(--success)">✓</b>':' <b style="color:var(--danger)">✗ introuvable — vérifiez library_root dans Paramètres</b>'}</div>
-        <div>Hash calculé : <b>${d.hash_computed ? '✓ ' + d.hash_prefix + '…' : '✗ non'}</b></div>
-        <div>Chemins scannés :</div>
+        <div>${LANG.diag_jf_path || 'Path Jellyfin :'} <span style="color:var(--text-muted);font-size:10px">${d.jellyfin_path}</span></div>
+        <div>${LANG.diag_resolved || 'Path résolu :'} <span style="color:${d.file_exists?'var(--success)':'var(--danger)'}">${d.resolved_path}</span>${d.file_exists?' <b style="color:var(--success)">✓</b>':' <b style="color:var(--danger)">' + (LANG.diag_not_found || '✗ introuvable') + '</b>'}</div>
+        <div>${LANG.diag_hash || 'Hash calculé :'} <b>${d.hash_computed ? '✓ ' + d.hash_prefix + '…' : '✗ non'}</b></div>
+        <div>${LANG.diag_scan_paths || 'Chemins scannés :'}</div>
         ${(d.scan_paths||[]).map(p=>`<div style="padding-left:12px">• ${p}</div>`).join('')}
-        ${d.jf_error ? `<div style="color:var(--danger)">Erreur Jellyfin : ${d.jf_error}</div>` : ''}
+        ${d.jf_error ? `<div style="color:var(--danger)">${LANG.diag_jf_error || 'Erreur Jellyfin :'} ${d.jf_error}</div>` : ''}
         ${d.transmission_comments && d.transmission_comments.length ? `
-          <div style="margin-top:4px">Commentaires torrents (brut) :</div>
+          <div style="margin-top:4px">${LANG.diag_torrents || 'Commentaires torrents (brut) :'}</div>
           ${d.transmission_comments.map(c => `<div style="padding-left:12px;word-break:break-all;color:var(--text)">• ${c}</div>`).join('')}
         ` : ''}
-        <div style="margin-top:4px">Liens services :</div>
+        <div style="margin-top:4px">${LANG.diag_links || 'Liens services :'}</div>
         ${linksHtml}
         ${errHtml}
       </div>
     </details>`;
   }
   if (scan.skipped || !scan.total_copies) {
-    strat.innerHTML = '<span style="color:var(--text-muted)">📁 Aucune copie identique détectée dans les chemins additionnels</span>' + dbg;
+    strat.innerHTML = `<span style="color:var(--text-muted)">📁 ${LANG.no_copies || 'Aucune copie identique détectée dans les chemins additionnels'}</span>` + dbg;
   } else if (scan.has_inode_match) {
-    strat.innerHTML = '<span style="color:var(--success)">🔗 Hardlinks détectés — même fichier (inode identique)</span>' + dbg;
+    strat.innerHTML = `<span style="color:var(--success)">🔗 ${LANG.hardlinks || 'Hardlinks détectés — même fichier (inode identique)'}</span>` + dbg;
   } else {
-    strat.innerHTML = '<span style="color:var(--info)">🔍 Copies identiques — hash SHA-256 correspondant</span>' + dbg;
+    strat.innerHTML = `<span style="color:var(--info)">🔍 ${LANG.hash_copies || 'Copies identiques — hash SHA-256 correspondant'}</span>` + dbg;
   }
 
-  // Compteurs
   document.getElementById('dc-count').textContent      = scan.total_copies   || '0';
   document.getElementById('dc-total').textContent      = scan.source_size_human || '—';
   document.getElementById('dc-files-total').textContent = scan.total_freed_human || scan.source_size_human || '—';
 
-  // Liste des éléments à supprimer
   const list = document.getElementById('dc-list');
   list.innerHTML = '';
   const lk = scan.service_links || {};
   const isMovie = _pendingDelete && _pendingDelete.type === 'Movie';
 
-  // Radarr ou Sonarr selon le type
   if (isMovie) {
-    _addConfirmRow(list, 'Radarr', 'Suppression du film + ajout à la liste d\'exclusion', 'var(--info)', '📡', lk.radarr || null);
+    _addConfirmRow(list, 'Radarr', LANG.radarr_detail || 'Suppression du film + ajout à la liste d\'exclusion', 'var(--info)', '📡', lk.radarr || null);
   } else {
-    _addConfirmRow(list, 'Sonarr', 'Suppression de l\'épisode/série + liste d\'exclusion', 'var(--info)', '📡', lk.sonarr || null);
+    _addConfirmRow(list, 'Sonarr', LANG.sonarr_detail || 'Suppression de l\'épisode/série + liste d\'exclusion', 'var(--info)', '📡', lk.sonarr || null);
   }
 
-  // Transmission — une ligne par torrent (multi-tracker)
   const transTorrents = lk.transmission_torrents || [];
   if (transTorrents.length === 0) {
-    _addConfirmRow(list, 'Transmission', 'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇', null);
+    _addConfirmRow(list, 'Transmission', LANG.trans_detail || 'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇', null);
   } else {
     transTorrents.forEach(t => {
       const label  = t.tracker_name ? `Transmission — ${t.tracker_name}` : `Transmission — ${t.name}`;
-      const detail = t.tracker_name ? `${t.name} · Arrêt du seeding + suppression du torrent` : 'Arrêt du seeding + suppression du torrent';
+      const detail = t.tracker_name ? `${t.name} · ${LANG.trans_detail || 'Arrêt du seeding + suppression du torrent'}` : (LANG.trans_detail || 'Arrêt du seeding + suppression du torrent');
       _addConfirmRow(list, label, detail, 'var(--info)', '⬇', t.tracker_url || null);
     });
   }
 
-  // Jellyfin
-  _addConfirmRow(list, 'Jellyfin', 'Refresh bibliothèque', 'var(--info)', '🎬', lk.jellyfin || null);
+  _addConfirmRow(list, 'Jellyfin', LANG.jelly_detail || 'Refresh bibliothèque', 'var(--info)', '🎬', lk.jellyfin || null);
 
   (scan.copies || []).forEach(c => {
     const badge = c.match_method === 'inode' ? '🔗 inode' : '🔍 hash';
     const color = c.match_method === 'inode' ? 'var(--success)' : 'var(--info)';
-    _addConfirmRow(
-      list, c.path,
-      `${c.size_human} · ${c.file_count} fichier${c.file_count > 1 ? 's' : ''} · ${badge}`,
-      color, '🗑️'
-    );
+    const fLabel = c.file_count > 1 ? (LANG.file_plural || 'fichiers') : (LANG.file_singular || 'fichier');
+    _addConfirmRow(list, c.path, `${c.size_human} · ${c.file_count} ${fLabel} · ${badge}`, color, '🗑️');
   });
 }
 
@@ -388,9 +383,9 @@ async function confirmDelete() {
     _pendingDelete = null;
 
     if (data.blocked_by_favorite) {
-      showToast(`⭐ "${label}" est en favori — protégé`, 'warning');
+      showToast(`⭐ "${label}" ${LANG.favorite_protected || 'est en favori — protégé'}`, 'warning');
     } else if (data.success) {
-      showToast(`✓ "${label}" supprimé`, 'success');
+      showToast(`✓ "${label}" ${LANG.deleted_ok || 'supprimé'}`, 'success');
       if (cardElemId) {
         const card = document.getElementById(cardElemId);
         if (card) {
@@ -408,7 +403,7 @@ async function confirmDelete() {
   } catch {
     document.getElementById('delete-confirm-modal').style.display = 'none';
     _pendingDelete = null;
-    showToast('✗ Erreur réseau', 'danger');
+    showToast('✗ ' + (LANG.network_error || 'Erreur réseau'), 'danger');
   }
 }
 
@@ -423,13 +418,14 @@ function showCleanupReport(label, c) {
   list.innerHTML = '';
   (c.details || []).forEach(d => {
     const badge = d.is_hardlink ? '🔗' : d.match_method === 'hash' ? '🔍' : '📝';
+    const fLabel = d.files > 1 ? (LANG.file_plural || 'fichiers') : (LANG.file_singular || 'fichier');
     const li = document.createElement('li');
     li.style.cssText = 'font-size:11px;padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start;word-break:break-all';
     li.innerHTML = `
       <span style="color:${d.success ? 'var(--success)' : 'var(--danger)'};flex-shrink:0">${d.success ? '✓' : '✗'}</span>
       <div>
         <span style="font-family:monospace;color:${d.success ? 'var(--text)' : 'var(--danger)'}">${esc(d.path)}</span>
-        <span style="color:var(--text-muted);margin-left:6px">${d.size} · ${d.files} fichier${d.files > 1 ? 's' : ''} ${badge}</span>
+        <span style="color:var(--text-muted);margin-left:6px">${d.size} · ${d.files} ${fLabel} ${badge}</span>
         ${d.error ? `<div style="color:var(--danger);margin-top:2px">${esc(d.error)}</div>` : ''}
       </div>`;
     list.appendChild(li);

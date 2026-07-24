@@ -1,39 +1,54 @@
 {% extends "base.html" %}
 {% set active = "settings" %}
 
-{% block title %} — Paramètres{% endblock %}
-{% block page_title %}Paramètres{% endblock %}
+{% block title %} — {{ t('settings.title') }}{% endblock %}
+{% block page_title %}{{ t('settings.title') }}{% endblock %}
 
 {% block content %}
 
 {% if saved %}
-<div class="alert alert-success" style="margin-bottom:20px">✓ Paramètres sauvegardés</div>
+<div class="alert alert-success" style="margin-bottom:20px">{{ t('settings.saved') }}</div>
 {% endif %}
 
 <!-- Mode Manuel / Auto -->
 <div class="section" style="margin-bottom:24px">
-  <div class="section-header"><h3>Mode de fonctionnement</h3></div>
+  <div class="section-header"><h3>{{ t('settings.mode_title') }}</h3></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px">
     <a href="/api/set-mode/manual" class="mode-card {% if cfg.rules.mode != 'auto' %}mode-active{% endif %}">
       <div class="mode-icon">🖱️</div>
-      <div class="mode-label">Manuel</div>
-      <div class="mode-desc">Tu choisis toi-même ce qui est supprimé depuis la page "Regardés"</div>
+      <div class="mode-label">{{ t('settings.mode_manual') }}</div>
+      <div class="mode-desc">{{ t('settings.mode_manual_desc') }}</div>
     </a>
     <a href="/api/set-mode/auto" class="mode-card {% if cfg.rules.mode == 'auto' %}mode-active{% endif %}">
       <div class="mode-icon">⚡</div>
-      <div class="mode-label">Automatique</div>
-      <div class="mode-desc">Suppression automatique selon les règles ci-dessous</div>
+      <div class="mode-label">{{ t('settings.mode_auto') }}</div>
+      <div class="mode-desc">{{ t('settings.mode_auto_desc') }}</div>
     </a>
   </div>
 </div>
 
 <form method="post" action="/settings">
 
+  <!-- Langue -->
+  <div class="section" style="margin-bottom:24px">
+    <div class="section-header"><h3>{{ t('settings.lang_title') }}</h3></div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>{{ t('settings.lang_label') }}</label>
+        <select name="language">
+          {% for code, label in SUPPORTED_LANGUAGES.items() %}
+          <option value="{{ code }}" {% if cfg.get('language', 'fr') == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
   <!-- Connexions -->
   <div class="section" style="margin-bottom:24px">
     <div class="section-header">
-      <h3>🔌 Connexions</h3>
-      <span class="text-muted text-sm">Sauvegardé dans <code>data/config.json</code></span>
+      <h3>{{ t('settings.connections_title') }}</h3>
+      <span class="text-muted text-sm">{{ t('settings.connections_subtitle') }} <code>data/config.json</code></span>
     </div>
     <div class="form-grid">
 
@@ -73,11 +88,11 @@
         <input type="number" name="trans_port" value="{{ cfg.transmission.port | default(9091) }}">
       </div>
       <div class="form-group">
-        <label>Transmission Username <span class="text-muted">(optionnel)</span></label>
+        <label>{{ t('settings.trans_user_label') }} <span class="text-muted">({{ t('settings.optional') }})</span></label>
         <input type="text" name="trans_user" value="{{ cfg.transmission.username or '' }}">
       </div>
       <div class="form-group">
-        <label>Transmission Password <span class="text-muted">(optionnel)</span></label>
+        <label>{{ t('settings.trans_pass_label') }} <span class="text-muted">({{ t('settings.optional') }})</span></label>
         <input type="password" name="trans_pass" value="{{ cfg.transmission.password or '' }}">
       </div>
 
@@ -86,13 +101,13 @@
 
   <!-- Utilisateurs -->
   <div class="section" style="margin-bottom:24px">
-    <div class="section-header"><h3>Utilisateurs</h3></div>
+    <div class="section-header"><h3>{{ t('settings.users_title') }}</h3></div>
     <div class="form-grid">
 
       <div class="form-group">
-        <label>👑 Utilisateur principal (doit toujours avoir regardé)</label>
+        <label>{{ t('settings.primary_user_label') }}</label>
         <select name="primary_user">
-          <option value="">— Aucun (utilise le mode multi-user) —</option>
+          <option value="">{{ t('settings.no_primary_user') }}</option>
           {% for u in jf_users %}
           <option value="{{ u.Id }}"
             {% if cfg.rules.primary_user == u.Id %}selected{% endif %}>
@@ -103,7 +118,7 @@
       </div>
 
       <div class="form-group">
-        <label>👥 Utilisateurs requis (doivent aussi avoir regardé)</label>
+        <label>{{ t('settings.required_users_label') }}</label>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
           {% for u in jf_users %}
           {% if u.Id != cfg.rules.primary_user %}
@@ -118,7 +133,7 @@
         </div>
         <input type="hidden" name="required_users_csv" id="required_users_csv"
                value="{{ (cfg.rules.required_users or []) | join(',') }}">
-        <small class="text-muted mt-8">Les autres utilisateurs n'ont aucun impact sur la suppression</small>
+        <small class="text-muted mt-8">{{ t('settings.required_users_note') }}</small>
       </div>
 
     </div>
@@ -126,11 +141,11 @@
 
   <!-- Scheduler -->
   <div class="section" style="margin-bottom:24px">
-    <div class="section-header"><h3>Planification des scans</h3></div>
+    <div class="section-header"><h3>{{ t('settings.scheduler_title') }}</h3></div>
     <div class="form-grid">
 
       <div class="form-group">
-        <label>🔄 Fréquence d'import des données (vus, favoris…)</label>
+        <label>{{ t('settings.scan_freq_label') }}</label>
         <select name="scan_interval">
           {% for minutes, label in interval_options.items() %}
           <option value="{{ minutes }}"
@@ -139,11 +154,11 @@
           </option>
           {% endfor %}
         </select>
-        <small class="text-muted mt-8">Lecture seule — aucune suppression déclenchée</small>
+        <small class="text-muted mt-8">{{ t('settings.scan_freq_note') }}</small>
       </div>
 
       <div class="form-group">
-        <label>⚡ Fréquence de traitement de la queue (mode Auto uniquement)</label>
+        <label>{{ t('settings.queue_freq_label') }}</label>
         <select name="queue_interval">
           {% for minutes, label in interval_options.items() %}
           <option value="{{ minutes }}"
@@ -152,7 +167,7 @@
           </option>
           {% endfor %}
         </select>
-        <small class="text-muted mt-8">Sans effet en mode Manuel</small>
+        <small class="text-muted mt-8">{{ t('settings.queue_freq_note') }}</small>
       </div>
 
     </div>
@@ -160,52 +175,50 @@
 
   <!-- Règles globales -->
   <div class="section" style="margin-bottom:24px">
-    <div class="section-header"><h3>Règles globales</h3></div>
+    <div class="section-header"><h3>{{ t('settings.rules_title') }}</h3></div>
     <div class="form-grid">
 
       <div class="form-group">
-        <label>% de visionnage minimum pour déclencher</label>
+        <label>{{ t('settings.watch_pct_label') }}</label>
         <input type="number" name="watch_pct" min="0" max="100"
                value="{{ cfg.rules.watch_percentage_threshold | default(85) }}">
       </div>
 
       <div class="form-group">
-        <label>Délai avant suppression (heures, 0 = immédiat)</label>
+        <label>{{ t('settings.delay_label') }}</label>
         <input type="number" name="delay_hours" min="0"
                value="{{ cfg.rules.deletion_delay_hours | default(0) }}">
       </div>
 
       <div class="form-group">
-        <label>Mode multi-utilisateur</label>
+        <label>{{ t('settings.multi_user_label') }}</label>
         <select name="multi_user_mode">
           <option value="any"  {% if cfg.rules.multi_user_mode == 'any'  %}selected{% endif %}>
-            Dès qu'un utilisateur a regardé
+            {{ t('settings.multi_user_any') }}
           </option>
           <option value="all"  {% if cfg.rules.multi_user_mode == 'all'  %}selected{% endif %}>
-            Quand TOUS les utilisateurs ont regardé
+            {{ t('settings.multi_user_all') }}
           </option>
         </select>
       </div>
 
       <div class="form-group">
-        <label>Seuil disque pour nettoyage auto (%, 0 = désactivé)</label>
+        <label>{{ t('settings.disk_threshold_label') }}</label>
         <input type="number" name="disk_threshold" min="0" max="100"
                value="{{ cfg.rules.disk_usage_threshold | default(0) }}">
       </div>
 
       <div class="form-group full">
-        <label>Utilisateurs à considérer (IDs Jellyfin, un par ligne — vide = tous)</label>
+        <label>{{ t('settings.watched_users_label') }}</label>
         <textarea name="watched_users">{{ (cfg.rules.watched_users or []) | join('\n') }}</textarea>
-        <small class="text-muted mt-8">
-          IDs disponibles : récupérés lors du test de connexion (voir test_connections.py)
-        </small>
+        <small class="text-muted mt-8">{{ t('settings.watched_users_note') }}</small>
       </div>
 
       <div class="form-group">
         <div class="checkbox-group">
           <input type="checkbox" name="delete_files" id="delete_files"
                  {% if cfg.rules.delete_files %}checked{% endif %}>
-          <label for="delete_files">Supprimer les fichiers du disque</label>
+          <label for="delete_files">{{ t('settings.delete_files_label') }}</label>
         </div>
       </div>
 
@@ -213,7 +226,7 @@
         <div class="checkbox-group">
           <input type="checkbox" name="add_to_exclusion" id="add_to_exclusion"
                  {% if cfg.rules.add_to_exclusion %}checked{% endif %}>
-          <label for="add_to_exclusion">Bloquer le re-téléchargement (liste d'exclusion)</label>
+          <label for="add_to_exclusion">{{ t('settings.add_exclusion_label') }}</label>
         </div>
       </div>
 
@@ -222,27 +235,27 @@
 
   <!-- Films -->
   <div class="section" style="margin-bottom:24px">
-    <div class="section-header"><h3>Films</h3></div>
+    <div class="section-header"><h3>{{ t('settings.movies_title') }}</h3></div>
     <div class="form-grid">
 
       <div class="form-group">
         <div class="checkbox-group">
           <input type="checkbox" name="movies_enabled" id="movies_enabled"
                  {% if cfg.rules.movies.enabled %}checked{% endif %}>
-          <label for="movies_enabled">Activer la suppression automatique des films</label>
+          <label for="movies_enabled">{{ t('settings.movies_enabled_label') }}</label>
         </div>
       </div>
 
       <div></div>
 
       <div class="form-group">
-        <label>% de visionnage minimum (override)</label>
+        <label>{{ t('settings.pct_override_label') }}</label>
         <input type="number" name="movies_pct" min="0" max="100"
                value="{{ cfg.rules.movies.watch_percentage_threshold | default(85) }}">
       </div>
 
       <div class="form-group">
-        <label>Délai avant suppression (heures)</label>
+        <label>{{ t('settings.delay_hours_label') }}</label>
         <input type="number" name="movies_delay" min="0"
                value="{{ cfg.rules.movies.deletion_delay_hours | default(0) }}">
       </div>
@@ -252,37 +265,37 @@
 
   <!-- Séries -->
   <div class="section" style="margin-bottom:24px">
-    <div class="section-header"><h3>Séries</h3></div>
+    <div class="section-header"><h3>{{ t('settings.series_title') }}</h3></div>
     <div class="form-grid">
 
       <div class="form-group">
         <div class="checkbox-group">
           <input type="checkbox" name="series_enabled" id="series_enabled"
                  {% if cfg.rules.series.enabled %}checked{% endif %}>
-          <label for="series_enabled">Activer la suppression automatique des séries</label>
+          <label for="series_enabled">{{ t('settings.series_enabled_label') }}</label>
         </div>
       </div>
 
       <div class="form-group">
-        <label>Mode de suppression</label>
+        <label>{{ t('settings.delete_mode_label') }}</label>
         <select name="series_mode">
           <option value="episode" {% if cfg.rules.series.delete_mode == 'episode' %}selected{% endif %}>
-            Épisode par épisode
+            {{ t('settings.delete_mode_episode') }}
           </option>
           <option value="series"  {% if cfg.rules.series.delete_mode == 'series'  %}selected{% endif %}>
-            Série entière (quand tous les épisodes vus)
+            {{ t('settings.delete_mode_series') }}
           </option>
         </select>
       </div>
 
       <div class="form-group">
-        <label>% de visionnage minimum (override)</label>
+        <label>{{ t('settings.pct_override_label') }}</label>
         <input type="number" name="series_pct" min="0" max="100"
                value="{{ cfg.rules.series.watch_percentage_threshold | default(85) }}">
       </div>
 
       <div class="form-group">
-        <label>Délai avant suppression (heures)</label>
+        <label>{{ t('settings.delay_hours_label') }}</label>
         <input type="number" name="series_delay" min="0"
                value="{{ cfg.rules.series.deletion_delay_hours | default(0) }}">
       </div>
@@ -293,36 +306,34 @@
   <!-- Chemins de la bibliothèque -->
   <div class="section" style="margin-bottom:24px">
     <div class="section-header">
-      <h3>🗂️ Bibliothèque & chemins de scan</h3>
-      <span class="text-muted text-sm">Répertoires pour la détection et le nettoyage des copies</span>
+      <h3>{{ t('settings.library_title') }}</h3>
+      <span class="text-muted text-sm">{{ t('settings.library_subtitle') }}</span>
     </div>
     <div style="padding:20px">
 
       <div class="form-grid" style="margin-bottom:20px">
         <div class="form-group">
-          <label>🎬 Racine bibliothèque Films</label>
+          <label>{{ t('settings.movies_root_label') }}</label>
           <input type="text" name="library_root_movies"
                  value="{{ cfg.library_root_movies | default('') }}"
                  placeholder="/srv/mergerfs/.../downloads/film/">
-          <small class="text-muted mt-8" style="display:block">Dossier source Jellyfin pour les films</small>
+          <small class="text-muted mt-8" style="display:block">{{ t('settings.movies_root_note') }}</small>
         </div>
         <div class="form-group">
-          <label>📺 Racine bibliothèque Séries</label>
+          <label>{{ t('settings.series_root_label') }}</label>
           <input type="text" name="library_root_series"
                  value="{{ cfg.library_root_series | default('') }}"
                  placeholder="/srv/mergerfs/.../downloads/série/">
-          <small class="text-muted mt-8" style="display:block">Dossier source Jellyfin pour les séries</small>
+          <small class="text-muted mt-8" style="display:block">{{ t('settings.series_root_note') }}</small>
         </div>
       </div>
 
       <label style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:block">
-        Chemins additionnels à scanner
+        {{ t('settings.extra_paths_label') }}
       </label>
       <textarea name="extra_paths_raw" rows="5" style="font-family:monospace;font-size:12px"
                 placeholder="/srv/mergerfs/DATA_POOL/HDD 1TO/downloads&#10;/srv/mergerfs/DATA_POOL/HDD 2TO/films">{{ (extra_paths or []) | join('\n') }}</textarea>
-      <small class="text-muted mt-8" style="display:block">
-        Un chemin absolu par ligne. Lors d'une suppression, l'app scanne ces dossiers pour trouver et supprimer TOUTES les copies du contenu (hardlinks, doublons, dossiers seeds…).
-      </small>
+      <small class="text-muted mt-8" style="display:block">{{ t('settings.extra_paths_note') }}</small>
 
       {% if extra_paths %}
       <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
@@ -342,7 +353,7 @@
   <!-- Journal événementiel -->
   <div class="section" style="margin-bottom:24px">
     <div class="section-header">
-      <h3>📝 Journal événementiel</h3>
+      <h3>{{ t('settings.logs_title') }}</h3>
       <span class="text-muted text-sm">Table <code>event_logs</code> dans <code>data/purgearr.db</code></span>
     </div>
     <div class="form-grid">
@@ -351,37 +362,46 @@
         <div class="checkbox-group">
           <input type="checkbox" name="logs_enabled" id="logs_enabled"
                  {% if cfg.logs is not defined or cfg.logs.enabled %}checked{% endif %}>
-          <label for="logs_enabled">Activer le journal (recommandé)</label>
+          <label for="logs_enabled">{{ t('settings.logs_enabled_label') }}</label>
         </div>
         <small class="text-muted mt-8">
-          Trace suppressions, visionnages, protection, sync, erreurs services. Consulter la <a href="/logs" style="color:var(--accent)">page Logs</a>.
+          {{ t('settings.logs_enabled_note') }} <a href="/logs" style="color:var(--accent)">{{ t('settings.logs_page_link') }}</a>.
         </small>
       </div>
 
       <div></div>
 
       <div class="form-group">
-        <label>Rétention (jours)</label>
+        <label>{{ t('settings.logs_retention_label') }}</label>
         <input type="number" name="logs_retention_days" min="1" max="365"
                value="{{ cfg.logs.retention_days | default(30) }}">
-        <small class="text-muted mt-8">Les entrées plus anciennes sont purgées automatiquement</small>
+        <small class="text-muted mt-8">{{ t('settings.logs_retention_note') }}</small>
       </div>
 
       <div class="form-group">
-        <label>Nombre max d'entrées</label>
+        <label>{{ t('settings.logs_max_label') }}</label>
         <input type="number" name="logs_max_entries" min="100" max="100000"
                value="{{ cfg.logs.max_entries | default(10000) }}">
-        <small class="text-muted mt-8">Purge des plus anciennes si dépassement</small>
+        <small class="text-muted mt-8">{{ t('settings.logs_max_note') }}</small>
       </div>
 
     </div>
   </div>
 
   <div class="form-actions">
-    <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
+    <button type="submit" class="btn btn-primary">{{ t('settings.save_btn') }}</button>
   </div>
 
 </form>
 
+<script>
+// Sync required users checkboxes
+document.querySelectorAll('.req-user-cb').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const checked = [...document.querySelectorAll('.req-user-cb:checked')].map(c => c.value);
+    document.getElementById('required_users_csv').value = checked.join(',');
+  });
+});
+</script>
 
 {% endblock %}

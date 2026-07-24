@@ -10,7 +10,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, get_scheduler_config, load_config, resolve_real_path, save_config, save_protected
+from config import get_config, get_extra_paths, get_language, get_mode, get_protected, get_rules, get_scan_paths, get_scheduler_config, load_config, resolve_real_path, save_config, save_protected
+from i18n import SUPPORTED_LANGUAGES, get_js_strings, translate
 from core import eventlog
 from core.pipeline import delete_episode, delete_movie, process_queue
 from core.sync import sync_watch_data
@@ -23,6 +24,9 @@ logger = logging.getLogger("purgearr.routes")
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["fromjson"] = json.loads
+templates.env.globals["t"] = lambda key: translate(get_language(), key)
+templates.env.globals["lang_js"] = lambda: get_js_strings(get_language())
+templates.env.globals["SUPPORTED_LANGUAGES"] = SUPPORTED_LANGUAGES
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -128,6 +132,7 @@ def settings_save(
     logs_enabled: bool = Form(False),
     logs_retention_days: int = Form(30),
     logs_max_entries: int = Form(10000),
+    language: str = Form("fr"),
 ):
     cfg = get_config()
     users_list       = [u.strip() for u in watched_users.splitlines() if u.strip()]
@@ -174,6 +179,7 @@ def settings_save(
         "retention_days": max(1, int(logs_retention_days)),
         "max_entries":    max(100, int(logs_max_entries)),
     }
+    cfg["language"] = language if language in SUPPORTED_LANGUAGES else "fr"
 
     save_config(cfg)
     restart_jobs()

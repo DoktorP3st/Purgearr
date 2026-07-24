@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
 
-{% block title %} — Dashboard{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block title %} — {{ t('dashboard.title') }}{% endblock %}
+{% block page_title %}{{ t('dashboard.title') }}{% endblock %}
 
 {% block topbar_actions %}
   <div style="display:flex;gap:8px;align-items:center">
-    <button class="btn btn-ghost btn-sm" onclick="runScan()" id="btn-scan">🔄 Lancer un scan</button>
-    <button class="btn btn-primary btn-sm" onclick="processNow()">▶ Traiter la queue</button>
+    <button class="btn btn-ghost btn-sm" onclick="runScan()" id="btn-scan">{{ t('dashboard.btn_scan') }}</button>
+    <button class="btn btn-primary btn-sm" onclick="processNow()">▶ {{ t('dashboard.btn_process') }}</button>
   </div>
 {% endblock %}
 
@@ -16,19 +16,19 @@
 <!-- Stat cards -->
 <div class="stats-grid">
   <div class="stat-card blue">
-    <div class="label">Films supprimés</div>
+    <div class="label">{{ t('dashboard.movies_deleted') }}</div>
     <div class="value">{{ stats.movies_deleted }}</div>
   </div>
   <div class="stat-card purple">
-    <div class="label">Épisodes supprimés</div>
+    <div class="label">{{ t('dashboard.episodes_deleted') }}</div>
     <div class="value">{{ stats.episodes_deleted }}</div>
   </div>
   <div class="stat-card orange">
-    <div class="label">En queue</div>
+    <div class="label">{{ t('dashboard.in_queue') }}</div>
     <div class="value">{{ stats.queue_pending }}</div>
   </div>
   <div class="stat-card green">
-    <div class="label">Éléments protégés</div>
+    <div class="label">{{ t('dashboard.protected_count') }}</div>
     <div class="value">{{ stats.protected }}</div>
   </div>
 </div>
@@ -36,18 +36,18 @@
 <!-- Queue en attente -->
 <div class="section">
   <div class="section-header">
-    <h3>Queue de suppression</h3>
-    <span class="text-muted text-sm">{{ stats.queue_pending }} en attente</span>
+    <h3>{{ t('dashboard.queue_title') }}</h3>
+    <span class="text-muted text-sm">{{ stats.queue_pending }} {{ t('dashboard.in_waiting') }}</span>
   </div>
   {% if queue %}
   <table>
     <thead>
       <tr>
-        <th>Titre</th>
-        <th>Type</th>
-        <th>Série</th>
-        <th>Planifié</th>
-        <th>Action</th>
+        <th>{{ t('dashboard.col_title') }}</th>
+        <th>{{ t('dashboard.col_type') }}</th>
+        <th>{{ t('dashboard.col_series') }}</th>
+        <th>{{ t('dashboard.col_scheduled') }}</th>
+        <th>{{ t('dashboard.col_action') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -56,39 +56,39 @@
         <td>{{ item.item_title }}</td>
         <td>
           {% if item.item_type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
           {% else %}
-            <span class="badge badge-episode">Épisode</span>
+            <span class="badge badge-episode">{{ t('common.episode') }}</span>
           {% endif %}
         </td>
         <td class="text-muted">{{ item.series_title or "—" }}</td>
         <td class="text-sm text-muted">{{ item.scheduled_at.strftime("%d/%m %H:%M") }}</td>
         <td>
-          <button class="btn btn-danger btn-sm" onclick="cancelItem({{ item.id }}, this)">Annuler</button>
+          <button class="btn btn-danger btn-sm" onclick="cancelItem({{ item.id }}, this)">{{ t('dashboard.cancel_btn') }}</button>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <div class="empty">Aucun item en attente de suppression</div>
+  <div class="empty">{{ t('dashboard.queue_empty') }}</div>
   {% endif %}
 </div>
 
 <!-- Activité récente -->
 <div class="section">
   <div class="section-header">
-    <h3>Suppressions récentes</h3>
-    <a href="/history" class="btn btn-ghost btn-sm">Voir tout</a>
+    <h3>{{ t('dashboard.recent_title') }}</h3>
+    <a href="/history" class="btn btn-ghost btn-sm">{{ t('dashboard.see_all') }}</a>
   </div>
   {% if recent %}
   <table>
     <thead>
       <tr>
-        <th>Titre</th>
-        <th>Type</th>
-        <th>Services</th>
-        <th>Date</th>
+        <th>{{ t('dashboard.col_title') }}</th>
+        <th>{{ t('dashboard.col_type') }}</th>
+        <th>{{ t('dashboard.col_services') }}</th>
+        <th>{{ t('dashboard.col_date') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -100,9 +100,9 @@
         </td>
         <td>
           {% if item.item_type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
           {% else %}
-            <span class="badge badge-episode">Épisode</span>
+            <span class="badge badge-episode">{{ t('common.episode') }}</span>
           {% endif %}
         </td>
         <td>
@@ -120,7 +120,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty">Aucune suppression pour l'instant</div>
+  <div class="empty">{{ t('dashboard.no_deletions') }}</div>
   {% endif %}
 </div>
 
@@ -129,7 +129,7 @@
 {% block scripts %}
 <script>
 function cancelItem(id, btn) {
-  if (!confirm('Annuler cette suppression ?')) return;
+  if (!confirm(LANG.cancel_confirm || 'Annuler cette suppression ?')) return;
   fetch(`/api/queue/${id}/cancel`, { method: 'POST' })
     .then(r => r.json())
     .then(d => { if (d.status === 'ok') btn.closest('tr').remove(); });
@@ -143,14 +143,14 @@ function processNow() {
 function runScan() {
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
-  btn.textContent = '⏳ Scan en cours…';
+  btn.textContent = LANG.scan_btn_scanning || '⏳ Scan en cours…';
   fetch('/api/scan/import', { method: 'POST' })
     .then(r => r.json())
     .then(d => {
-      btn.textContent = `✓ ${d.movies} films · ${d.episodes} épisodes importés`;
-      setTimeout(() => { btn.disabled = false; btn.textContent = '🔄 Lancer un scan'; }, 4000);
+      btn.textContent = `✓ ${d.movies} ${LANG.films_label || 'films'} · ${d.episodes} ${LANG.episodes_label || 'épisodes importés'}`;
+      setTimeout(() => { btn.disabled = false; btn.textContent = LANG.scan_btn_idle || '🔄 Lancer un scan'; }, 4000);
     })
-    .catch(() => { btn.disabled = false; btn.textContent = '🔄 Lancer un scan'; });
+    .catch(() => { btn.disabled = false; btn.textContent = LANG.scan_btn_idle || '🔄 Lancer un scan'; });
 }
 </script>
 {% endblock %}

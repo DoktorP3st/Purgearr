@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% set active = "protected" %}
 
-{% block title %} — Protection{% endblock %}
-{% block page_title %}Liste de protection{% endblock %}
+{% block title %} — {{ t('protected.title') }}{% endblock %}
+{% block page_title %}{{ t('protected.title') }}{% endblock %}
 
 {% block content %}
 
 <!-- Recherche Jellyfin -->
 <div class="section" style="margin-bottom:24px">
   <div class="section-header">
-    <h3>Rechercher un contenu à protéger</h3>
-    <span class="text-muted text-sm">Films et séries de ta bibliothèque Jellyfin</span>
+    <h3>{{ t('protected.search_title') }}</h3>
+    <span class="text-muted text-sm">{{ t('protected.search_subtitle') }}</span>
   </div>
   <div style="padding:20px">
     <div style="position:relative">
-      <input type="text" id="search-input" placeholder="Harry Potter, Inception, Breaking Bad…"
+      <input type="text" id="search-input" placeholder="{{ t('protected.search_placeholder') }}"
              autocomplete="off" style="padding-left:36px">
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
     </div>
     <div id="search-results" style="margin-top:16px;display:none">
       <div id="results-grid" class="poster-grid"></div>
-      <div id="results-empty" class="empty" style="display:none">Aucun résultat</div>
+      <div id="results-empty" class="empty" style="display:none">{{ t('protected.no_results') }}</div>
     </div>
   </div>
 </div>
@@ -29,8 +29,12 @@
 {% if protected_items %}
 <div class="section">
   <div class="section-header">
-    <h3>🛡️ Contenus protégés</h3>
-    <span class="text-muted text-sm">{{ protected_items | length }} élément(s) — jamais supprimés automatiquement</span>
+    <h3>🛡️ {{ t('protected.list_title') }}</h3>
+    <span class="text-muted text-sm">
+      {{ protected_items | length }}
+      {% if protected_items | length > 1 %}{{ t('protected.element_plural') }}{% else %}{{ t('protected.element_singular') }}{% endif %}
+      — {{ t('protected.never_auto_deleted') }}
+    </span>
   </div>
   <div class="poster-grid" style="padding:20px">
     {% for item in protected_items %}
@@ -44,9 +48,9 @@
 
         <div class="poster-badges">
           {% if item.type == "Movie" %}
-            <span class="badge badge-movie">Film</span>
+            <span class="badge badge-movie">{{ t('common.movie') }}</span>
           {% else %}
-            <span class="badge badge-episode">Série</span>
+            <span class="badge badge-episode">{{ t('common.serie') }}</span>
           {% endif %}
         </div>
 
@@ -56,7 +60,7 @@
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
         <div class="poster-pct text-muted text-sm">
-          {% if item.source == 'id' %}Par ID Jellyfin{% else %}Par titre{% endif %}
+          {% if item.source == 'id' %}{{ t('protected.by_id') }}{% else %}{{ t('protected.by_title') }}{% endif %}
         </div>
       </div>
 
@@ -64,14 +68,14 @@
       <div class="poster-overlay">
         <div style="text-align:center;padding:12px">
           <div style="font-size:28px;margin-bottom:8px">🔒</div>
-          <div style="font-size:12px;color:var(--warning);font-weight:600;margin-bottom:12px">Protégé</div>
+          <div style="font-size:12px;color:var(--warning);font-weight:600;margin-bottom:12px">{{ t('protected.protected_label') }}</div>
           <form method="post" action="/protected/remove" style="display:inline">
             {% if item.id %}
             <input type="hidden" name="jellyfin_id" value="{{ item.id }}">
             {% else %}
             <input type="hidden" name="title" value="{{ item.title }}">
             {% endif %}
-            <button type="submit" class="btn btn-danger btn-sm">🗑️ Retirer</button>
+            <button type="submit" class="btn btn-danger btn-sm">🗑️ {{ t('protected.remove_btn') }}</button>
           </form>
         </div>
       </div>
@@ -83,7 +87,7 @@
 
 {% else %}
 <div class="section">
-  <div class="empty">Aucun élément protégé — tout peut être supprimé automatiquement</div>
+  <div class="empty">{{ t('protected.none_protected') }}</div>
 </div>
 {% endif %}
 
@@ -97,6 +101,14 @@
 
 {% block scripts %}
 <script>
+// Strings côté JS pour les éléments dynamiques
+const PROT_ALREADY  = {{ t('protected.already_protected') | tojson }};
+const PROT_CLICK    = {{ t('protected.click_to_protect') | tojson }};
+const PROT_BTN      = {{ t('protected.protect_btn') | tojson }};
+const PROT_BADGE    = {{ t('protected.protected_label') | tojson }};
+const BADGE_MOVIE   = {{ t('common.movie') | tojson }};
+const BADGE_SERIE   = {{ t('common.serie') | tojson }};
+
 let searchTimer = null;
 
 const input   = document.getElementById('search-input');
@@ -130,26 +142,25 @@ async function doSearch(q) {
     const card = document.createElement('div');
     card.className = 'poster-card' + (it.is_protected ? ' is-fav' : '');
     card.style.cursor = it.is_protected ? 'default' : 'pointer';
+    const badgeLabel = it.type === 'Movie' ? BADGE_MOVIE : BADGE_SERIE;
     card.innerHTML = `
       <div class="poster-img-wrap">
         <img src="${it.image_url}" alt="${esc(it.title)}" class="poster-img"
              onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
         <div class="poster-badges">
-          <span class="badge ${it.type === 'Movie' ? 'badge-movie' : 'badge-episode'}">
-            ${it.type === 'Movie' ? 'Film' : 'Série'}
-          </span>
+          <span class="badge ${it.type === 'Movie' ? 'badge-movie' : 'badge-episode'}">${badgeLabel}</span>
         </div>
-        ${it.is_protected ? '<div class="ready-badge ready-ok" style="top:6px;right:6px">🔒 Protégé</div>' : ''}
+        ${it.is_protected ? `<div class="ready-badge ready-ok" style="top:6px;right:6px">🔒 ${PROT_BADGE}</div>` : ''}
       </div>
       <div class="poster-info">
         <div class="poster-title" title="${esc(it.title)}">${esc(it.title)}</div>
-        <div class="poster-pct text-muted text-sm">${it.is_protected ? '✓ Déjà protégé' : 'Cliquer pour protéger'}</div>
+        <div class="poster-pct text-muted text-sm">${it.is_protected ? PROT_ALREADY : PROT_CLICK}</div>
       </div>
       ${!it.is_protected ? `
       <div class="poster-overlay">
         <div style="text-align:center;padding:12px">
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${esc(it.title)}</div>
-          <button class="btn btn-primary btn-sm protect-btn">🔒 Protéger</button>
+          <button class="btn btn-primary btn-sm protect-btn">${PROT_BTN}</button>
         </div>
       </div>` : ''}
     `;
