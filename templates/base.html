@@ -20,7 +20,6 @@
     <a href="/suggestions" class="{% if active == 'suggestions' %}active{% endif %}">🧹 Suggestions</a>
     <a href="/history"     class="{% if active == 'history'     %}active{% endif %}">🗑️ Historique</a>
     <a href="/protected"   class="{% if active == 'protected'   %}active{% endif %}">🛡️ Protection</a>
-    <a href="/transmission" class="{% if active == 'transmission' %}active{% endif %}">⬇️ Transmission</a>
     <a href="/settings"    class="{% if active == 'settings'    %}active{% endif %}">⚙️ Paramètres</a>
   </nav>
 
@@ -70,7 +69,7 @@
     <div id="dc-scanning" style="text-align:center;padding:36px 0">
       <div style="font-size:36px;margin-bottom:14px">🔍</div>
       <div style="color:var(--text-muted);font-size:13px">Analyse des chemins additionnels…</div>
-      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">Détection par inode, hash SHA-256 et titre</div>
+      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">Détection par inode et hash SHA-256</div>
     </div>
 
     <!-- État : résultats -->
@@ -222,6 +221,7 @@ async function deleteWithScan(id, type, title, seriesTitle, cardElemId) {
     fd.append('series_title', seriesTitle || '');
     const res  = await fetch('/api/scan/copies', { method: 'POST', body: fd });
     const scan = await res.json();
+    _pendingDelete.sourceHash = scan.source_hash || '';
     _showScanResults(seriesTitle || title, scan);
   } catch (e) {
     modal.style.display = 'none';
@@ -240,13 +240,26 @@ function _showScanResults(label, scan) {
   // Badge stratégie
   const strat = document.getElementById('dc-strategy');
   if (scan.skipped || !scan.total_copies) {
-    strat.innerHTML = '<span style="color:var(--text-muted)">📁 Aucune copie détectée dans les chemins additionnels</span>';
+    let dbg = '';
+    if (scan._debug) {
+      const d = scan._debug;
+      dbg = `<details style="margin-top:8px;font-size:11px;color:var(--text-muted)">
+        <summary style="cursor:pointer">🔍 Diagnostic</summary>
+        <div style="margin-top:6px;line-height:1.8;font-family:monospace">
+          <div>Path Jellyfin : <span style="color:var(--text-muted);font-size:10px">${d.jellyfin_path}</span></div>
+          <div>Path résolu : <span style="color:${d.file_exists?'var(--success)':'var(--danger)'}">${d.resolved_path}</span>${d.file_exists?' <b style="color:var(--success)">✓</b>':' <b style="color:var(--danger)">✗ introuvable — vérifiez library_root_movies/series dans Paramètres</b>'}</div>
+          <div>Hash calculé : <b>${d.hash_computed ? '✓ ' + d.hash_prefix + '…' : '✗ non'}</b></div>
+          <div>Chemins scannés :</div>
+          ${(d.scan_paths||[]).map(p=>`<div style="padding-left:12px">• ${p}</div>`).join('')}
+          ${d.jf_error ? `<div style="color:var(--danger)">Erreur Jellyfin : ${d.jf_error}</div>` : ''}
+        </div>
+      </details>`;
+    }
+    strat.innerHTML = '<span style="color:var(--text-muted)">📁 Aucune copie identique détectée dans les chemins additionnels</span>' + dbg;
   } else if (scan.has_inode_match) {
-    strat.innerHTML = '<span style="color:var(--success)">🔗 Hardlinks détectés — correspondance par inode (fiabilité 100%)</span>';
-  } else if ((scan.copies || []).some(c => c.match_method === 'hash')) {
-    strat.innerHTML = '<span style="color:var(--info)">🔍 Fichiers identiques — correspondance par hash SHA-256</span>';
+    strat.innerHTML = '<span style="color:var(--success)">🔗 Hardlinks détectés — même fichier (inode identique)</span>';
   } else {
-    strat.innerHTML = '<span style="color:var(--warning)">⚠️ Correspondance par titre — vérifier la liste ci-dessous avant de confirmer</span>';
+    strat.innerHTML = '<span style="color:var(--info)">🔍 Copies identiques — hash SHA-256 correspondant</span>';
   }
 
   // Compteurs
@@ -262,12 +275,8 @@ function _showScanResults(label, scan) {
   _addConfirmRow(list, 'Transmission',    'Arrêt du seeding + suppression du torrent', 'var(--info)', '⬇');
 
   (scan.copies || []).forEach(c => {
-    const badge = c.match_method === 'inode' ? '🔗 inode'
-                : c.match_method === 'hash'  ? '🔍 hash'
-                :                              '📝 titre';
-    const color = c.match_method === 'inode' ? 'var(--success)'
-                : c.match_method === 'hash'  ? 'var(--info)'
-                :                              'var(--warning)';
+    const badge = c.match_method === 'inode' ? '🔗 inode' : '🔍 hash';
+    const color = c.match_method === 'inode' ? 'var(--success)' : 'var(--info)';
     _addConfirmRow(
       list, c.path,
       `${c.size_human} · ${c.file_count} fichier${c.file_count > 1 ? 's' : ''} · ${badge}`,
@@ -290,7 +299,7 @@ function _addConfirmRow(ul, path, detail, color, icon) {
 
 async function confirmDelete() {
   if (!_pendingDelete) return;
-  const { id, type, title, seriesTitle, cardElemId } = _pendingDelete;
+  const { id, type, title, seriesTitle, cardElemId, sourceHash } = _pendingDelete;
 
   document.getElementById('dc-scanning').style.display   = 'none';
   document.getElementById('dc-results').style.display    = 'none';
@@ -301,6 +310,7 @@ async function confirmDelete() {
   fd.append('item_type', type);
   fd.append('item_title', title);
   fd.append('series_title', seriesTitle || '');
+  fd.append('source_hash', sourceHash || '');
 
   try {
     const res  = await fetch('/api/delete/manual', { method: 'POST', body: fd });

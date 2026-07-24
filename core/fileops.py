@@ -1,7 +1,6 @@
 import hashlib
 import logging
 import os
-import re
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -16,19 +15,8 @@ METADATA_EXTENSIONS = {
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts", ".m2ts", ".iso"}
 
 
-# ── Helpers bas niveau ────────────────────────────────────────────────────────
-
-def _inode_key(path: str) -> Optional[Tuple[int, int]]:
-    """Retourne (device, inode) — deux hardlinks ont la même valeur."""
-    try:
-        s = os.stat(path)
-        return (s.st_dev, s.st_ino)
-    except Exception:
-        return None
-
-
 def _file_hash(path: str, chunk: int = 65536) -> str:
-    """SHA-256 des premiers 64 Ko d'un fichier (empreinte rapide)."""
+    """SHA-256 des premiers 64 Ko d'un fichier."""
     h = hashlib.sha256()
     try:
         with open(path, "rb") as f:
@@ -38,71 +26,17 @@ def _file_hash(path: str, chunk: int = 65536) -> str:
         return ""
 
 
-# Articles et prépositions ignorés dans la comparaison (mais PAS les chiffres/numéros de saga)
-_STOP_WORDS = {
-    "the", "and", "of", "in", "a", "an", "to", "or", "by", "at", "from",
-    "le", "la", "les", "de", "du", "des", "un", "une", "et", "au", "aux",
-    "en", "sur", "dans", "par", "pour",
-}
+def hash_file(path: str) -> str:
+    """Empreinte SHA-256 (64 Ko) — à appeler AVANT toute suppression."""
+    return _file_hash(path)
 
 
-def _extract_year(s: str) -> Optional[int]:
-    """Extrait l'année (1900-2099) d'un chemin ou nom de fichier."""
-    m = re.search(r'\b((?:19|20)\d{2})\b', s)
-    return int(m.group(1)) if m else None
-
-
-def _normalize(name: str) -> str:
-    name = name.lower()
-    name = re.sub(r"[''`]", "", name)
-    name = re.sub(r"\(?\b(19|20)\d{2}\b\)?", "", name)
-    name = re.sub(
-        r"\b(bluray|bdrip|webrip|web-?dl|hdtv|4k|uhd|1080p|720p|480p"
-        r"|x264|x265|hevc|aac|dts|hdr|remux|complete"
-        r"|french|vff|vf|multi|truefrench|vostfr|mhd|custom"
-        r"|hd|ma|dd|ddp|eac3|ac3|atmos|truehd|dolby|10bit|8bit|dv|hdr10|imax|sdr"
-        r"|extended|unrated|theatrical|remastered|proper|repack|retail|limited)\b",
-        "", name)
-    name = re.sub(r"[._\-\[\]\(\)\s]+", " ", name)
-    return re.sub(r"\s+", " ", name).strip()
-
-
-def _sig_words(norm: str) -> list:
-    """Mots significatifs : sans stop words, longueur >= 2 (garde 'ii', 'iii', '2'…)."""
-    return [w for w in norm.split() if w not in _STOP_WORDS and len(w) >= 2]
-
-
-def _matches(entry_name: str, title: str, known_year: Optional[int] = None) -> bool:
-    # Filtre par année : si l'entrée a une année différente du contenu connu → exclusion
-    # ex. "Blade (1998)" ne retrouve PAS "Blade Trinity (2004)" même si les noms se ressemblent
-    if known_year:
-        entry_year = _extract_year(entry_name)
-        if entry_year is not None and entry_year != known_year:
-            return False
-
-    norm_entry = _normalize(entry_name)
-    norm_title = _normalize(title)
-    if not norm_title or not norm_entry:
-        return False
-
-    if norm_title == norm_entry:
-        return True
-
-    title_sig = _sig_words(norm_title)
-    entry_sig  = _sig_words(norm_entry)
-
-    if not title_sig or len(entry_sig) < len(title_sig):
-        return False
-
-    # Limite le bruit résiduel : au plus 1 mot sig de plus que le titre
-    # (ex. le release group "RiFiFi" peut survivre à la normalisation)
-    # "Daredevil" → max 2 mots sig → "daredevil born again" (3) est rejeté
-    if len(entry_sig) > len(title_sig) + 1:
-        return False
-
-    # Les mots sig du titre doivent être les PREMIERS mots sig de l'entrée (préfixe)
-    # "blade ii" → ["blade","ii"] doit précéder → ne matche PAS "blade trinity"
-    return entry_sig[:len(title_sig)] == title_sig
+def _inode_key(path: str) -> Optional[Tuple[int, int]]:
+    try:
+        s = os.stat(path)
+        return (s.st_dev, s.st_ino)
+    except Exception:
+        return None
 
 
 def _calc_size(path: str) -> Tuple[int, int]:
@@ -122,19 +56,6 @@ def _calc_size(path: str) -> Tuple[int, int]:
     return total, count
 
 
-def _video_files_in(directory: str, max_depth: int = 3) -> List[str]:
-    """Liste les fichiers vidéo dans un dossier (profondeur limitée)."""
-    base_depth = directory.rstrip(os.sep).count(os.sep)
-    result = []
-    for root, dirs, files in os.walk(directory):
-        if root.count(os.sep) - base_depth >= max_depth:
-            dirs.clear()
-            continue
-        for f in files:
-            if Path(f).suffix.lower() in VIDEO_EXTENSIONS:
-                result.append(os.path.join(root, f))
-    return result
-
 
 def format_size(bytes_: int) -> str:
     if bytes_ >= 1_073_741_824:
@@ -144,31 +65,52 @@ def format_size(bytes_: int) -> str:
     return f"{bytes_ / 1024:.1f} Ko"
 
 
-# ── Scan intelligent ──────────────────────────────────────────────────────────
+# ── Scan par hash ─────────────────────────────────────────────────────────────
 
-def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Dict:
+def scan_copies_smart(
+    title: str,
+    known_path: str,
+    extra_paths: List[str],
+    source_hash: str = "",
+) -> Dict:
     """
-    Scan non-destructif : trouve toutes les copies dans extra_paths.
-
-    Stratégie par priorité :
-      1. Inode  — hardlinks sur le même filesystem (identique à 100%)
-      2. Hash   — fichiers identiques cross-filesystem (SHA-256 64Ko)
-      3. Titre  — correspondance floue sur le nom (fallback)
+    Trouve les copies dans extra_paths par inode (hardlinks) puis hash SHA-256.
+    source_hash : hash pré-calculé avant suppression Radarr/Sonarr.
+    Aucun matching par titre — uniquement contenu identique.
     """
-    known_real   = ""
+    known_hash   = source_hash
     known_inode  = None
-    known_hash   = ""
-    # L'année est extraite de la chaîne de chemin même si le fichier est déjà supprimé
-    known_year   = _extract_year(known_path) if known_path else None
+    known_real   = ""
+    known_is_dir = False
 
     if known_path and os.path.isfile(known_path):
         known_real  = os.path.realpath(known_path)
         known_inode = _inode_key(known_path)
         known_hash  = _file_hash(known_path)
-        strategy    = "inode+hash+titre"
-    else:
-        strategy = "titre"
+    elif known_path and os.path.isdir(known_path):
+        known_real   = os.path.realpath(known_path)
+        known_is_dir = True
+        # Premier fichier vidéo dans le dossier — sert de référence inode/hash
+        for _r, _d, _f in os.walk(known_path):
+            for _fn in sorted(_f):
+                if Path(_fn).suffix.lower() in VIDEO_EXTENSIONS:
+                    _fp = os.path.join(_r, _fn)
+                    known_inode = _inode_key(_fp)
+                    if not known_hash:
+                        known_hash = _file_hash(_fp)
+                    break
+            if known_hash:
+                break
 
+    if not known_hash:
+        return {
+            "title": title, "known_path": known_path, "source_hash": "",
+            "strategy": "indisponible", "copies": [], "total_copies": 0,
+            "total_size_bytes": 0, "total_size_human": format_size(0),
+            "has_inode_match": False, "skipped": True,
+        }
+
+    strategy = "inode+hash" if known_inode else "hash"
     found: List[Dict] = []
 
     for base in extra_paths:
@@ -177,52 +119,75 @@ def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Di
             logger.warning("[Scan] Chemin ignoré (introuvable) : %s", base)
             continue
 
+        base_depth = base.rstrip(os.sep).count(os.sep)
+        reported: set = set()
+
         try:
-            for entry in os.scandir(base):
-                # Exclure le chemin géré par Radarr/Sonarr
-                try:
-                    entry_real = os.path.realpath(entry.path)
-                    if known_real and entry_real in (known_real, os.path.dirname(known_real)):
+            for root, dirs, files in os.walk(base, followlinks=False):
+                depth = root.count(os.sep) - base_depth
+                if depth >= 5:
+                    dirs.clear()
+                    continue
+
+                for fname in files:
+                    if Path(fname).suffix.lower() not in VIDEO_EXTENSIONS:
                         continue
-                except Exception:
-                    pass
+                    fpath = os.path.join(root, fname)
 
-                match_method: Optional[str] = None
+                    # Ignorer les fichiers appartenant au dossier/fichier source
+                    try:
+                        real_fpath = os.path.realpath(fpath)
+                        if known_real:
+                            if known_is_dir and real_fpath.startswith(known_real + os.sep):
+                                continue
+                            elif not known_is_dir and real_fpath == known_real:
+                                continue
+                    except Exception:
+                        pass
 
-                if entry.is_file():
-                    ext = Path(entry.name).suffix.lower()
-                    if known_inode and _inode_key(entry.path) == known_inode:
+                    match_method: Optional[str] = None
+                    if known_inode and _inode_key(fpath) == known_inode:
                         match_method = "inode"
-                    elif known_hash and ext in VIDEO_EXTENSIONS:
-                        if _file_hash(entry.path) == known_hash:
-                            match_method = "hash"
-                    elif ext in VIDEO_EXTENSIONS and _matches(entry.name, title, known_year):
-                        match_method = "titre"
+                    elif _file_hash(fpath) == known_hash:
+                        match_method = "hash"
 
-                elif entry.is_dir():
-                    if known_inode or known_hash:
-                        for vf in _video_files_in(entry.path):
-                            if known_inode and _inode_key(vf) == known_inode:
-                                match_method = "inode"
-                                break
-                            if known_hash and _file_hash(vf) == known_hash:
-                                match_method = "hash"
-                                break
-                    if match_method is None and _matches(entry.name, title, known_year):
-                        match_method = "titre"
+                    if not match_method:
+                        continue
 
-                if match_method:
-                    size_bytes, file_count = _calc_size(entry.path)
+                    # Dossier parent du fichier trouvé = dossier release
+                    # (évite de remonter trop haut si base contient film/ ou serie/)
+                    parent = os.path.dirname(fpath)
+                    if os.path.normpath(parent) == os.path.normpath(base):
+                        release = fpath   # fichier directement dans base
+                    else:
+                        release = parent  # dossier contenant le fichier
+
+                    if release in reported:
+                        continue
+                    reported.add(release)
+
+                    # Ignorer si c'est la source elle-même
+                    try:
+                        real_release = os.path.realpath(release)
+                        if known_real:
+                            if known_is_dir and real_release == known_real:
+                                continue
+                            elif not known_is_dir and real_release == os.path.dirname(known_real):
+                                continue
+                    except Exception:
+                        pass
+
+                    size_bytes, file_count = _calc_size(release)
                     found.append({
-                        "path":         entry.path,
-                        "is_dir":       entry.is_dir(),
+                        "path":         release,
+                        "is_dir":       os.path.isdir(release),
                         "size_bytes":   size_bytes,
                         "size_human":   format_size(size_bytes),
                         "file_count":   file_count,
                         "match_method": match_method,
                         "is_hardlink":  match_method == "inode",
                     })
-                    logger.info("[Scan] Copie trouvée (%s) : %s", match_method, entry.path)
+                    logger.info("[Scan] Copie trouvée (%s) : %s", match_method, release)
 
         except PermissionError as e:
             logger.warning("[Scan] Accès refusé à %s : %s", base, e)
@@ -231,6 +196,7 @@ def scan_copies_smart(title: str, known_path: str, extra_paths: List[str]) -> Di
     return {
         "title":            title,
         "known_path":       known_path,
+        "source_hash":      known_hash,
         "strategy":         strategy,
         "copies":           found,
         "total_copies":     len(found),
@@ -283,7 +249,6 @@ def _delete_companions(file_path: str):
 
 
 def run_cleanup_from_scan(scan_result: Dict) -> Dict:
-    """Supprime les entrées identifiées par scan_copies_smart."""
     copies = scan_result.get("copies", [])
     if not copies:
         return {"skipped": True, "copies_found": 0}
@@ -316,9 +281,9 @@ def run_cleanup_from_scan(scan_result: Dict) -> Dict:
     }
 
 
-def run_cleanup(title: str, file_path: str, extra_paths: List[str]) -> Dict:
-    """Point d'entrée appelé depuis pipeline.py après suppression Radarr/Sonarr."""
+def run_cleanup(title: str, file_path: str, extra_paths: List[str], source_hash: str = "") -> Dict:
+    """Appelé depuis pipeline.py après suppression Radarr/Sonarr."""
     if not extra_paths:
         return {"skipped": True, "copies_found": 0}
-    scan = scan_copies_smart(title, file_path, extra_paths)
+    scan = scan_copies_smart(title, file_path, extra_paths, source_hash=source_hash)
     return run_cleanup_from_scan(scan)

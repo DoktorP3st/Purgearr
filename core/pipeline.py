@@ -1,12 +1,13 @@
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from config import get_extra_paths, get_mode, get_rules
-from core.fileops import run_cleanup
+from config import get_extra_paths, get_mode, get_rules, get_scan_paths, resolve_real_path
+from core.fileops import hash_file, run_cleanup
 from database import DeletionHistory, DeletionQueue, WatchEvent
 from services.factory import get_jellyfin, get_radarr, get_sonarr, get_transmission
 
@@ -48,10 +49,11 @@ def _stop_torrent(file_path: str, title: str) -> Optional[str]:
 
 # ── Suppression film ──────────────────────────────────────────────────────────
 
-def delete_movie(db: Session, item: Dict, triggered_by: str) -> Dict:
+def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = "") -> Dict:
     """
     Pipeline complet de suppression d'un film.
     item = { jellyfin_id, title, tmdb_id, imdb_id, file_path }
+    source_hash : empreinte pré-calculée (scan manuel) ou calculée ici avant suppression Radarr
     """
     result = {"success": False, "services": [], "errors": [], "blocked_by_favorite": False, "cleanup": None}
     rules = get_rules()
@@ -70,10 +72,29 @@ def delete_movie(db: Session, item: Dict, triggered_by: str) -> Dict:
     except Exception as e:
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
 
+    # 0.5 Empreinte SHA-256 AVANT suppression — pour retrouver les copies par hash
+    # (si source_hash fourni par le scan manuel, on l'utilise directement)
+    if not source_hash and file_path and os.path.isfile(file_path):
+        source_hash = hash_file(file_path)
+        logger.debug(f"[Pipeline] Hash source calculé avant suppression : {source_hash[:12]}…")
+
     # 1. Transmission — stop seeding avant que Radarr efface les fichiers
     torrent_name = _stop_torrent(file_path, title)
     if torrent_name:
         result["services"].append("transmission")
+
+    # 1.5 Sauvegarder dans l'index cleanup AVANT que Radarr supprime les fichiers
+    try:
+        from core.cleanup_store import add_entry
+        file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
+        add_entry(
+            item_title=title, item_type="Movie", source_hash=source_hash,
+            file_path=file_path, jellyfin_item_id=item.get("jellyfin_id", ""),
+            file_size_bytes=file_size, torrent_name=torrent_name,
+            scan_paths=get_scan_paths("Movie"),
+        )
+    except Exception as e:
+        logger.warning(f"[Cleanup] Erreur sauvegarde index : {e}")
 
     # 2. Radarr — supprime le film, les fichiers, et bloque le re-téléchargement
     try:
@@ -99,9 +120,9 @@ def delete_movie(db: Session, item: Dict, triggered_by: str) -> Dict:
         result["errors"].append(f"Radarr: {e}")
         logger.error(f"[Radarr] Erreur pour '{title}': {e}")
 
-    # 2.5 Nettoyage des copies sur les chemins additionnels
+    # 2.5 Nettoyage des copies (hash pré-calculé = pas de fallback titre hasardeux)
     try:
-        result["cleanup"] = run_cleanup(title, file_path, get_extra_paths())
+        result["cleanup"] = run_cleanup(title, file_path, get_scan_paths("Movie"), source_hash=source_hash)
     except Exception as e:
         logger.warning(f"[Fileops] Erreur nettoyage copies : {e}")
 
@@ -118,7 +139,7 @@ def delete_movie(db: Session, item: Dict, triggered_by: str) -> Dict:
 
 # ── Suppression épisode ───────────────────────────────────────────────────────
 
-def delete_episode(db: Session, item: Dict, triggered_by: str) -> Dict:
+def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str = "") -> Dict:
     """
     Pipeline de suppression d'un épisode (ou d'une série entière selon config).
     item = { jellyfin_id, title, series_title, tvdb_id, file_path, season, episode }
@@ -142,10 +163,28 @@ def delete_episode(db: Session, item: Dict, triggered_by: str) -> Dict:
     except Exception as e:
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
 
+    # 0.5 Empreinte SHA-256 AVANT suppression
+    if not source_hash and file_path and os.path.isfile(file_path):
+        source_hash = hash_file(file_path)
+
     # 1. Transmission
     torrent_name = _stop_torrent(file_path, series_title)
     if torrent_name:
         result["services"].append("transmission")
+
+    # 1.5 Sauvegarder dans l'index cleanup AVANT que Sonarr supprime les fichiers
+    try:
+        from core.cleanup_store import add_entry
+        file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
+        add_entry(
+            item_title=title, item_type="Episode", source_hash=source_hash,
+            file_path=file_path, series_title=series_title,
+            jellyfin_item_id=item.get("jellyfin_id", ""),
+            file_size_bytes=file_size, torrent_name=torrent_name,
+            scan_paths=get_scan_paths("Episode"),
+        )
+    except Exception as e:
+        logger.warning(f"[Cleanup] Erreur sauvegarde index : {e}")
 
     # 2. Sonarr
     try:
@@ -198,10 +237,10 @@ def delete_episode(db: Session, item: Dict, triggered_by: str) -> Dict:
         result["errors"].append(f"Sonarr: {e}")
         logger.error(f"[Sonarr] Erreur pour '{series_title}': {e}")
 
-    # 2.5 Nettoyage des copies sur les chemins additionnels
+    # 2.5 Nettoyage des copies (hash pré-calculé)
     try:
         cleanup_title = series_title if delete_mode == "series" else title
-        result["cleanup"] = run_cleanup(cleanup_title, file_path, get_extra_paths())
+        result["cleanup"] = run_cleanup(cleanup_title, file_path, get_scan_paths("Episode"), source_hash=source_hash)
     except Exception as e:
         logger.warning(f"[Fileops] Erreur nettoyage copies : {e}")
 
@@ -241,6 +280,7 @@ def process_queue(db: Session):
             jf_item = jf.get_item(queue_item.jellyfin_item_id)
             provider_ids = jf_item.get("ProviderIds", {})
 
+            raw_path = queue_item.file_path or jf_item.get("Path", "")
             item = {
                 "jellyfin_id": queue_item.jellyfin_item_id,
                 "type": queue_item.item_type,
@@ -249,7 +289,7 @@ def process_queue(db: Session):
                 "tmdb_id": queue_item.tmdb_id or provider_ids.get("Tmdb"),
                 "imdb_id": queue_item.imdb_id or provider_ids.get("Imdb"),
                 "tvdb_id": queue_item.tvdb_id or provider_ids.get("Tvdb"),
-                "file_path": queue_item.file_path or jf_item.get("Path", ""),
+                "file_path": resolve_real_path(raw_path, queue_item.item_type),
                 "season": jf_item.get("ParentIndexNumber"),
                 "episode": jf_item.get("IndexNumber"),
             }

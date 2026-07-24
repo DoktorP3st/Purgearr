@@ -290,13 +290,34 @@
     </div>
   </div>
 
-  <!-- Chemins additionnels -->
+  <!-- Chemins de la bibliothèque -->
   <div class="section" style="margin-bottom:24px">
     <div class="section-header">
-      <h3>🗂️ Chemins additionnels à scanner</h3>
-      <span class="text-muted text-sm">Copies sur d'autres disques — supprimées lors du nettoyage</span>
+      <h3>🗂️ Bibliothèque & chemins de scan</h3>
+      <span class="text-muted text-sm">Répertoires pour la détection et le nettoyage des copies</span>
     </div>
     <div style="padding:20px">
+
+      <div class="form-grid" style="margin-bottom:20px">
+        <div class="form-group">
+          <label>🎬 Racine bibliothèque Films</label>
+          <input type="text" name="library_root_movies"
+                 value="{{ cfg.library_root_movies | default('') }}"
+                 placeholder="/srv/mergerfs/.../downloads/film/">
+          <small class="text-muted mt-8" style="display:block">Dossier source Jellyfin pour les films</small>
+        </div>
+        <div class="form-group">
+          <label>📺 Racine bibliothèque Séries</label>
+          <input type="text" name="library_root_series"
+                 value="{{ cfg.library_root_series | default('') }}"
+                 placeholder="/srv/mergerfs/.../downloads/série/">
+          <small class="text-muted mt-8" style="display:block">Dossier source Jellyfin pour les séries</small>
+        </div>
+      </div>
+
+      <label style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:block">
+        Chemins additionnels à scanner
+      </label>
       <textarea name="extra_paths_raw" rows="5" style="font-family:monospace;font-size:12px"
                 placeholder="/srv/mergerfs/DATA_POOL/HDD 1TO/downloads&#10;/srv/mergerfs/DATA_POOL/HDD 2TO/films">{{ (extra_paths or []) | join('\n') }}</textarea>
       <small class="text-muted mt-8" style="display:block">
@@ -314,6 +335,7 @@
         {% endfor %}
       </div>
       {% endif %}
+
     </div>
   </div>
 

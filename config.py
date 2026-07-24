@@ -83,3 +83,59 @@ def get_mode() -> str:
 
 def get_extra_paths():
     return get_config().get("extra_paths", [])
+
+
+def get_scan_paths(item_type: str = "") -> list:
+    """Chemins à scanner : extra_paths + racine films ou séries selon item_type."""
+    cfg = get_config()
+    paths = list(cfg.get("extra_paths", []))
+    if item_type in ("Episode", "Series"):
+        root = cfg.get("library_root_series", "").strip()
+    else:
+        root = cfg.get("library_root_movies", "").strip()
+    if root and root not in paths:
+        paths.append(root)
+    return paths
+
+
+def resolve_real_path(jf_path: str, item_type: str = "") -> str:
+    """
+    Jellyfin renvoie un chemin avec un préfixe de mount différent du filesystem réel.
+    Teste toutes les racines connues (movies, series, extra_paths) dans l'ordre,
+    en strippant progressivement les composants du chemin Jellyfin.
+    """
+    import os
+    from pathlib import Path
+
+    if not jf_path:
+        return ""
+
+    if os.path.isfile(jf_path) or os.path.isdir(jf_path):
+        return jf_path
+
+    cfg = get_config()
+
+    # Racine du bon type en premier, l'autre en fallback, puis extra_paths
+    if item_type in ("Episode", "Series"):
+        roots = [
+            cfg.get("library_root_series", "").strip(),
+            cfg.get("library_root_movies", "").strip(),
+        ]
+    else:
+        roots = [
+            cfg.get("library_root_movies", "").strip(),
+            cfg.get("library_root_series", "").strip(),
+        ]
+    roots += [p.strip() for p in cfg.get("extra_paths", [])]
+
+    parts = Path(jf_path).parts
+    for root in roots:
+        if not root:
+            continue
+        for i in range(1, len(parts)):
+            relative = os.path.join(*parts[i:])
+            candidate = os.path.join(root, relative)
+            if os.path.isfile(candidate) or os.path.isdir(candidate):
+                return candidate
+
+    return jf_path

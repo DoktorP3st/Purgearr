@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -8,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scheduler_config, load_config, save_config, save_protected
+from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, get_scheduler_config, load_config, resolve_real_path, save_config, save_protected
 from core.pipeline import delete_episode, delete_movie, process_queue
 from core.sync import sync_watch_data
 from scheduler import INTERVAL_OPTIONS, restart_jobs
@@ -112,6 +114,8 @@ def settings_save(
     primary_user: str = Form(""),
     required_users_csv: str = Form(""),
     extra_paths_raw: str = Form(""),
+    library_root_movies: str = Form(""),
+    library_root_series: str = Form(""),
 ):
     cfg = get_config()
     users_list       = [u.strip() for u in watched_users.splitlines() if u.strip()]
@@ -119,13 +123,15 @@ def settings_save(
     extra_paths_list = [p.strip() for p in extra_paths_raw.splitlines() if p.strip()]
     current_mode     = cfg.get("rules", {}).get("mode", "manual")
 
-    cfg["jellyfin"]     = {"url": jellyfin_url, "api_key": jellyfin_api_key}
-    cfg["radarr"]       = {"url": radarr_url,   "api_key": radarr_api_key}
-    cfg["sonarr"]       = {"url": sonarr_url,   "api_key": sonarr_api_key}
-    cfg["transmission"] = {
+    cfg["jellyfin"]          = {"url": jellyfin_url, "api_key": jellyfin_api_key}
+    cfg["radarr"]            = {"url": radarr_url,   "api_key": radarr_api_key}
+    cfg["sonarr"]            = {"url": sonarr_url,   "api_key": sonarr_api_key}
+    cfg["transmission"]      = {
         "host": trans_host, "port": trans_port,
         "username": trans_user or None, "password": trans_pass or None,
     }
+    cfg["library_root_movies"] = library_root_movies.strip() or cfg.get("library_root_movies", "")
+    cfg["library_root_series"] = library_root_series.strip() or cfg.get("library_root_series", "")
     cfg["rules"] = {
         "mode":                       current_mode,
         "primary_user":               primary_user,
@@ -622,20 +628,40 @@ def api_scan_copies(
     series_title: str = Form(""),
 ):
     """Scan non-destructif : trouve toutes les copies dans les chemins additionnels."""
-    from core.fileops import scan_copies_smart
-    extra_paths = get_extra_paths()
-    if not extra_paths:
+    import os
+    from core.fileops import scan_copies_smart, _file_hash
+    scan_paths = get_scan_paths(item_type)
+    if not scan_paths:
         return JSONResponse({"copies": [], "total_copies": 0, "total_size_human": "0 Ko",
-                             "skipped": True, "has_inode_match": False})
+                             "skipped": True, "has_inode_match": False,
+                             "_debug": "scan_paths vide — configurez la racine bibliothèque ou les chemins additionnels"})
     file_path = ""
+    raw_jf_path = ""
+    jf_error  = ""
     try:
-        jf = get_jellyfin()
-        it = jf.get_item(jellyfin_item_id)
-        file_path = it.get("Path", "")
-    except Exception:
-        pass
+        jf    = get_jellyfin()
+        admin = (jf.get_users() or [{}])[0].get("Id")
+        it    = jf.get_item(jellyfin_item_id, user_id=admin)
+        raw_jf_path = it.get("Path", "")
+        file_path   = resolve_real_path(raw_jf_path, item_type)
+    except Exception as e:
+        jf_error = str(e)
+
     label  = series_title or item_title
-    result = scan_copies_smart(label, file_path, extra_paths)
+    result = scan_copies_smart(label, file_path, scan_paths)
+
+    # Debug info toujours présent dans la réponse
+    resolved = file_path != raw_jf_path and bool(file_path)
+    result["_debug"] = {
+        "jellyfin_path": raw_jf_path or "(vide)",
+        "resolved_path": file_path or "(vide)",
+        "resolved":      resolved,
+        "file_exists":   os.path.isfile(file_path) if file_path else False,
+        "hash_computed": bool(result.get("source_hash")),
+        "hash_prefix":   result.get("source_hash", "")[:12] or "(aucun)",
+        "scan_paths":    scan_paths,
+        "jf_error":      jf_error or None,
+    }
     return JSONResponse(result)
 
 
@@ -645,6 +671,7 @@ def manual_delete(
     item_type: str = Form(...),
     item_title: str = Form(...),
     series_title: str = Form(""),
+    source_hash: str = Form(""),
     db: Session = Depends(get_db),
 ):
     jf = get_jellyfin()
@@ -663,15 +690,15 @@ def manual_delete(
         "tmdb_id": provider_ids.get("Tmdb"),
         "imdb_id": provider_ids.get("Imdb"),
         "tvdb_id": provider_ids.get("Tvdb"),
-        "file_path": details.get("Path", ""),
+        "file_path": resolve_real_path(details.get("Path", ""), item_type),
         "season": details.get("ParentIndexNumber"),
         "episode": details.get("IndexNumber"),
     }
 
     if item_type == "Movie":
-        result = delete_movie(db, item, triggered_by="manual")
+        result = delete_movie(db, item, triggered_by="manual", source_hash=source_hash)
     else:
-        result = delete_episode(db, item, triggered_by="manual")
+        result = delete_episode(db, item, triggered_by="manual", source_hash=source_hash)
 
     return JSONResponse({
         "success":            result["success"],
@@ -679,4 +706,102 @@ def manual_delete(
         "errors":             result["errors"],
         "blocked_by_favorite": result.get("blocked_by_favorite", False),
         "cleanup":            result.get("cleanup"),
+    })
+
+
+# ── Cleanup index — scan des restes ──────────────────────────────────────────
+
+@router.post("/api/cleanup/rescan")
+def api_cleanup_rescan():
+    """Scanne tous les items de l'index pour trouver les copies résiduelles."""
+    from core.cleanup_store import load_index, save_index
+    from core.fileops import scan_copies_smart
+
+    entries = load_index()
+    results = []
+    now = datetime.utcnow().isoformat()
+
+    for entry in entries:
+        if not entry.get("source_hash"):
+            continue
+        scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
+        scan = scan_copies_smart(
+            entry["item_title"], "", scan_paths,
+            source_hash=entry["source_hash"],
+        )
+        entry["remains_checked_at"] = now
+        entry["remains_found"] = scan["total_copies"]
+        if scan["total_copies"] > 0:
+            results.append({
+                "id":           entry["id"],
+                "item_title":   entry["item_title"],
+                "series_title": entry.get("series_title"),
+                "item_type":    entry.get("item_type", "Movie"),
+                "deleted_at":   entry["deleted_at"],
+                "torrent_name": entry.get("torrent_name"),
+                "source_hash":  entry["source_hash"][:12],
+                "copies":       scan["copies"],
+                "total_copies": scan["total_copies"],
+                "total_size":   scan["total_size_human"],
+            })
+
+    save_index(entries)
+    return JSONResponse({"found": len(results), "items": results})
+
+
+@router.post("/api/cleanup/delete-remains")
+def api_cleanup_delete_remains(entry_id: str = Form(...)):
+    """Supprime les restes d'un item spécifique."""
+    from core.cleanup_store import load_index, save_index
+    from core.fileops import scan_copies_smart, run_cleanup_from_scan
+
+    entries = load_index()
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if not entry or not entry.get("source_hash"):
+        return JSONResponse({"error": "Entrée introuvable"}, status_code=404)
+
+    scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
+    scan = scan_copies_smart(
+        entry["item_title"], "", scan_paths,
+        source_hash=entry["source_hash"],
+    )
+    cleanup = run_cleanup_from_scan(scan)
+    entry["remains_found"] = 0
+    entry["remains_checked_at"] = datetime.utcnow().isoformat()
+    save_index(entries)
+    return JSONResponse(cleanup)
+
+
+@router.post("/api/cleanup/purge-all")
+def api_cleanup_purge_all():
+    """Scanne et supprime TOUS les restes en une seule passe."""
+    from core.cleanup_store import load_index, save_index
+    from core.fileops import scan_copies_smart, run_cleanup_from_scan
+
+    entries = load_index()
+    total_deleted = 0
+    total_size = 0
+    now = datetime.utcnow().isoformat()
+
+    for entry in entries:
+        if not entry.get("source_hash"):
+            continue
+        scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
+        scan = scan_copies_smart(
+            entry["item_title"], "", scan_paths,
+            source_hash=entry["source_hash"],
+        )
+        if scan["total_copies"] > 0:
+            cleanup = run_cleanup_from_scan(scan)
+            total_deleted += cleanup.get("copies_deleted", 0)
+            total_size += cleanup.get("size_bytes", 0)
+        entry["remains_found"] = 0
+        entry["remains_checked_at"] = now
+
+    save_index(entries)
+    from core.fileops import format_size
+    return JSONResponse({
+        "success": True,
+        "copies_deleted": total_deleted,
+        "size_human": format_size(total_size),
     })

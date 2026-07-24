@@ -4,6 +4,13 @@
 {% block title %} — Historique{% endblock %}
 {% block page_title %}Historique des suppressions{% endblock %}
 
+{% block topbar_actions %}
+<button class="btn btn-ghost" onclick="openRemainsModal()"
+        style="font-size:13px;display:flex;align-items:center;gap:6px">
+  🔍 Scanner les restes
+</button>
+{% endblock %}
+
 {% block content %}
 
 <div class="section">
@@ -61,4 +68,160 @@
   {% endif %}
 </div>
 
+<!-- ── Modal scanner les restes ── -->
+<div id="remains-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);
+  z-index:1100;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;
+              padding:24px;width:700px;max-width:96vw;max-height:88vh;overflow-y:auto">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <h3 style="font-size:16px">🔍 Scan des restes</h3>
+      <button onclick="document.getElementById('remains-modal').style.display='none'"
+              class="btn btn-ghost btn-sm">✕</button>
+    </div>
+
+    <!-- Scanning -->
+    <div id="rm-scanning" style="text-align:center;padding:40px 0">
+      <div style="font-size:36px;margin-bottom:14px">🔍</div>
+      <div style="color:var(--text-muted);font-size:13px">Analyse de l'index en cours…</div>
+      <div style="color:var(--text-muted);font-size:11px;margin-top:6px">Comparaison par hash SHA-256</div>
+    </div>
+
+    <!-- Résultats -->
+    <div id="rm-results" style="display:none">
+      <div id="rm-summary" style="padding:12px 16px;border-radius:8px;
+           background:var(--surface);margin-bottom:16px;font-size:13px"></div>
+
+      <div id="rm-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px"></div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-ghost"
+                onclick="document.getElementById('remains-modal').style.display='none'">
+          Fermer
+        </button>
+        <button id="rm-purge-btn" class="btn btn-danger" onclick="purgeAll()" style="display:none">
+          🗑️ Tout supprimer
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _remainsData = [];
+
+async function openRemainsModal() {
+  const modal = document.getElementById('remains-modal');
+  document.getElementById('rm-scanning').style.display = 'block';
+  document.getElementById('rm-results').style.display  = 'none';
+  modal.style.display = 'flex';
+
+  try {
+    const res  = await fetch('/api/cleanup/rescan', { method: 'POST' });
+    const data = await res.json();
+    _remainsData = data.items || [];
+    renderRemainsResults(data);
+  } catch (e) {
+    document.getElementById('rm-scanning').innerHTML =
+      '<div style="color:var(--danger);font-size:13px">✗ Erreur lors du scan</div>';
+  }
+}
+
+function renderRemainsResults(data) {
+  document.getElementById('rm-scanning').style.display = 'none';
+  document.getElementById('rm-results').style.display  = 'block';
+
+  const summary = document.getElementById('rm-summary');
+  if (data.found === 0) {
+    summary.innerHTML = '<span style="color:var(--success)">✓ Aucun reste détecté — tout est propre</span>';
+    document.getElementById('rm-purge-btn').style.display = 'none';
+  } else {
+    const totalSize = data.items.reduce((s, i) => s + i.copies.reduce((a, c) => a + c.size_bytes, 0), 0);
+    summary.innerHTML = `<span style="color:var(--warning)">⚠ ${data.found} item(s) avec des restes détectés</span>`;
+    document.getElementById('rm-purge-btn').style.display = 'inline-flex';
+  }
+
+  const list = document.getElementById('rm-list');
+  list.innerHTML = '';
+  (data.items || []).forEach(item => {
+    const card = document.createElement('div');
+    card.id = 'rm-card-' + item.id;
+    card.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px';
+    const type = item.item_type === 'Movie' ? '🎬' : '📺';
+    const label = item.series_title ? `${item.series_title} — ${item.item_title}` : item.item_title;
+    const date = new Date(item.deleted_at).toLocaleDateString('fr-FR');
+    let copiesList = (item.copies || []).map(c =>
+      `<div style="font-family:monospace;font-size:11px;color:var(--text-muted);padding-left:12px">
+         • ${esc(c.path)} — ${c.size_human} · ${c.file_count} fichier${c.file_count>1?'s':''}
+       </div>`
+    ).join('');
+    card.innerHTML = `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${type} ${esc(label)}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">
+            Supprimé le ${date} · hash ${esc(item.source_hash)}… · ${item.total_copies} copie(s) · ${item.total_size}
+          </div>
+          ${copiesList}
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteRemains('${item.id}')"
+                id="rm-btn-${item.id}" style="flex-shrink:0;font-size:12px">
+          🗑️ Supprimer
+        </button>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+async function deleteRemains(entryId) {
+  const btn = document.getElementById('rm-btn-' + entryId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+
+  const fd = new FormData();
+  fd.append('entry_id', entryId);
+  try {
+    const res  = await fetch('/api/cleanup/delete-remains', { method: 'POST', body: fd });
+    const data = await res.json();
+    const card = document.getElementById('rm-card-' + entryId);
+    if (data.copies_deleted > 0) {
+      if (card) {
+        card.innerHTML = `<div style="color:var(--success);font-size:13px">
+          ✓ ${data.copies_deleted} copie(s) supprimée(s) — ${data.size_human} libérés</div>`;
+      }
+      showToast(`✓ Restes supprimés — ${data.size_human} libérés`, 'success');
+    } else {
+      if (card) {
+        card.innerHTML = `<div style="color:var(--text-muted);font-size:13px">Aucun reste trouvé</div>`;
+      }
+    }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Supprimer'; }
+    showToast('✗ Erreur lors de la suppression', 'danger');
+  }
+}
+
+async function purgeAll() {
+  const btn = document.getElementById('rm-purge-btn');
+  btn.disabled = true; btn.textContent = '⏳ Suppression…';
+  try {
+    const res  = await fetch('/api/cleanup/purge-all', { method: 'POST' });
+    const data = await res.json();
+    document.getElementById('rm-list').innerHTML =
+      `<div style="color:var(--success);font-size:13px;padding:16px 0">
+         ✓ ${data.copies_deleted} copie(s) supprimée(s) — ${data.size_human} libérés
+       </div>`;
+    document.getElementById('rm-summary').innerHTML =
+      '<span style="color:var(--success)">✓ Nettoyage terminé</span>';
+    btn.style.display = 'none';
+    showToast(`✓ ${data.copies_deleted} reste(s) supprimés — ${data.size_human} libérés`, 'success');
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '🗑️ Tout supprimer';
+    showToast('✗ Erreur lors du nettoyage', 'danger');
+  }
+}
+</script>
 {% endblock %}
