@@ -3,6 +3,8 @@
     "dashboard": "Dashboard",
     "watched": "Regardés",
     "suggestions": "Suggestions",
+    "orphelins": "Orphelins",
+    "catalogue": "Mon Catalogue",
     "history": "Historique",
     "protected": "Protection",
     "logs": "Logs",
@@ -105,6 +107,19 @@
     "dead_title": "💀 Occupent de l'espace sans seeder",
     "dead_subtitle": "Ratio 0 — personne ne télécharge, espace gaspillé",
     "dead_ratio_zero": "Rien uploadé — ratio 0"
+  },
+  "orphelins": {
+    "title": "Orphelins Jellyfin",
+    "subtitle": "Présents sur Jellyfin mais absents de Transmission",
+    "contents": "contenus",
+    "empty": "✓ Tout le contenu a un torrent dans Transmission",
+    "trans_down": "⚠ Transmission injoignable — impossible de détecter les orphelins",
+    "watched_by": "Vu par",
+    "never_watched": "Jamais regardé",
+    "added_label": "Ajouté",
+    "users_label": "utilisateurs",
+    "delete_btn": "Supprimer",
+    "no_torrent_badge": "Hors Transmission"
   },
   "history": {
     "title": "Historique des suppressions",

@@ -138,9 +138,19 @@ class JellyfinClient:
         result = self._get(f"/Users/{user_id}/Items", params={
             "IncludeItemTypes": media_type,
             "Recursive": True,
-            "Fields": "Path,ProviderIds,UserData,DateCreated",
+            "Fields": "Path,ProviderIds,UserData,DateCreated,OriginalTitle,ChildCount,RecursiveItemCount",
             "SortBy": "DateCreated",
             "SortOrder": "Ascending",
+            "Limit": limit,
+        })
+        return result.get("Items", [])
+
+    def get_all_episodes_with_series(self, user_id: str, limit: int = 10000) -> List[Dict]:
+        """Tous les épisodes avec chemin et métadonnées de série (pour détection orphelins)."""
+        result = self._get(f"/Users/{user_id}/Items", params={
+            "IncludeItemTypes": "Episode",
+            "Recursive": True,
+            "Fields": "Path,SeriesId,SeriesName,ParentIndexNumber,UserData",
             "Limit": limit,
         })
         return result.get("Items", [])

@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% set active = "catalogue" %}
+
+{% block title %} — Mon Catalogue{% endblock %}
+{% block page_title %}Mon Catalogue{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="refreshCatalogue(this)">
+  🔄 Actualiser
+</button>
+{% endblock %}
+
+{% block content %}
+
+{# ── Macro URL helper ── #}
+{% macro nav_url(t=tab, p=1, s=sort, st=status, search=q) -%}
+/catalogue?tab={{ t }}&page={{ p }}&sort={{ s }}&status={{ st }}{% if search %}&q={{ search | urlencode }}{% endif %}
+{%- endmacro %}
+
+<!-- Recherche -->
+<form method="get" action="/catalogue"
+      style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+  <input type="hidden" name="tab"    value="{{ tab }}">
+  <input type="hidden" name="sort"   value="{{ sort }}">
+  <input type="hidden" name="status" value="{{ status }}">
+  <input type="text" name="q" value="{{ q }}"
+         placeholder="🔍 Rechercher un titre…"
+         style="flex:1;max-width:420px;padding:8px 14px;border-radius:8px;
+                border:1px solid var(--border);background:var(--surface);
+                color:var(--text);font-size:13px;outline:none">
+  <button type="submit" class="btn btn-ghost btn-sm">Rechercher</button>
+  {% if q %}
+  <a href="{{ nav_url(search='') }}" class="btn btn-ghost btn-sm">✕ Effacer</a>
+  {% endif %}
+</form>
+
+<!-- Tabs -->
+<div style="display:flex;gap:8px;margin-bottom:14px">
+  <a href="{{ nav_url(t='films') }}"
+     style="padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;
+            text-decoration:none;border:1px solid var(--border);
+            {% if tab == 'films' %}background:var(--accent);color:#fff;border-color:var(--accent)
+            {% else %}background:transparent;color:var(--text-muted){% endif %}">
+    📽️ Films ({{ total_films }})
+    <span style="font-size:11px;font-weight:400;opacity:0.85;margin-left:4px">{{ films_size }}</span>
+  </a>
+  <a href="{{ nav_url(t='series') }}"
+     style="padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;
+            text-decoration:none;border:1px solid var(--border);
+            {% if tab == 'series' %}background:var(--accent);color:#fff;border-color:var(--accent)
+            {% else %}background:transparent;color:var(--text-muted){% endif %}">
+    📺 Séries ({{ total_series }})
+    <span style="font-size:11px;font-weight:400;opacity:0.85;margin-left:4px">{{ series_size }}</span>
+  </a>
+</div>
+
+<!-- Tri -->
+{% macro sort_btn(val, label) %}
+<a href="{{ nav_url(s=val) }}"
+   style="padding:4px 10px;border-radius:6px;font-size:12px;text-decoration:none;
+          border:1px solid var(--border);white-space:nowrap;
+          {% if sort == val %}background:var(--surface);color:var(--text);font-weight:600;border-color:var(--accent)
+          {% else %}background:transparent;color:var(--text-muted){% endif %}">
+  {{ label }}
+</a>
+{% endmacro %}
+
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+  <span class="text-muted text-sm" style="margin-right:2px">Tri :</span>
+  {{ sort_btn('date_desc', '📅 Récent') }}
+  {{ sort_btn('date_asc',  '📅 Ancien') }}
+  {{ sort_btn('alpha_asc', 'A → Z') }}
+  {{ sort_btn('alpha_desc','Z → A') }}
+  {{ sort_btn('size_desc', '⚖️ Poids ↓') }}
+  {{ sort_btn('size_asc',  '⚖️ Poids ↑') }}
+</div>
+
+<!-- Filtre statut -->
+{% macro status_btn(val, label, color='var(--text-muted)') %}
+<a href="{{ nav_url(st=val) }}"
+   style="padding:4px 10px;border-radius:6px;font-size:12px;text-decoration:none;
+          border:1px solid var(--border);white-space:nowrap;
+          {% if status == val %}background:var(--surface);color:{{ color }};font-weight:600;border-color:{{ color }}
+          {% else %}background:transparent;color:var(--text-muted){% endif %}">
+  {{ label }}
+</a>
+{% endmacro %}
+
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:18px">
+  <span class="text-muted text-sm" style="margin-right:2px">Statut :</span>
+  {{ status_btn('all',     'Tous',           'var(--text)') }}
+  {{ status_btn('never',   '🔴 Jamais vu',   'var(--danger)') }}
+  {{ status_btn('partial', '🟡 Partiel',     'var(--warning)') }}
+  {{ status_btn('seen',    '🟢 Tous vus',    'var(--success)') }}
+  {{ status_btn('seeding', '🔥 En seed',     'var(--success)') }}
+  {{ status_btn('idle',    '💤 Seedé inactif','var(--warning)') }}
+  {{ status_btn('dead',    '💀 Ratio mort',  'var(--danger)') }}
+  {{ status_btn('noseed',  '❓ Sans torrent','var(--text-muted)') }}
+</div>
+
+<!-- Info + pagination haut -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+  <span class="text-muted text-sm">
+    {{ total_items }} résultat{{ 's' if total_items > 1 else '' }}
+    {% if total_pages > 1 %} — Page {{ page }} / {{ total_pages }}{% endif %}
+  </span>
+  {% if total_pages > 1 %}
+  <div style="display:flex;gap:6px;align-items:center">
+    {% if page > 1 %}
+    <a href="{{ nav_url(p=page-1) }}" class="btn btn-ghost btn-sm">← Précédent</a>
+    {% endif %}
+    <span class="text-muted text-sm" style="padding:0 8px">{{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ nav_url(p=page+1) }}" class="btn btn-ghost btn-sm">Suivant →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Grille -->
+{% if items %}
+<div class="poster-grid" style="padding:0 0 20px">
+  {% for item in items %}
+  <div class="poster-card" id="ccard-{{ item.id }}">
+
+    <div class="poster-img-wrap">
+      <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
+           onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
+
+      {% if item.seed.found and item.seed.size_gb > 0 %}
+      <div style="position:absolute;top:6px;left:6px;
+                  background:rgba(220,38,38,0.85);border-radius:6px;
+                  padding:2px 8px;font-size:11px;font-weight:700;color:#fff">
+        {{ item.seed.size_gb }} Go
+      </div>
+      {% endif %}
+
+      {% if item.age %}
+      <div style="position:absolute;bottom:6px;right:6px;
+                  background:rgba(0,0,0,0.75);border-radius:6px;
+                  padding:2px 7px;font-size:11px;font-weight:700;color:var(--accent)">
+        {{ item.age }}
+      </div>
+      {% endif %}
+
+      {% if item.is_favorite %}
+      <div class="seed-badge" style="background:rgba(245,158,11,0.85)" title="Favori">⭐</div>
+      {% elif item.seed.found %}
+        {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}
+        <div class="seed-badge seed-active"
+             title="Seeding actif — {{ item.seed.peers_up }} pair(s) — {{ item.seed.uploaded_gb }} Go uploadés">
+          🔥 R:{{ item.seed.ratio }}
+        </div>
+        {% elif item.seed.ratio > 0 %}
+        <div class="seed-badge seed-done"
+             title="Seedé — ratio {{ item.seed.ratio }} — {{ item.seed.uploaded_gb }} Go uploadés">
+          💤 R:{{ item.seed.ratio }}
+        </div>
+        {% else %}
+        <div class="seed-badge seed-dead" title="Ratio 0 — ne seede plus">
+          💀 R:0
+        </div>
+        {% endif %}
+      {% else %}
+      <div class="seed-badge seed-unknown" title="Absent de Transmission">?</div>
+      {% endif %}
+
+      <div class="poster-progress">
+        <div class="poster-progress-bar"
+             style="width:{{ ((item.watch_count / item.total_users) * 100) | int if item.total_users > 0 else 0 }}%;
+                    background:{% if item.watch_count == 0 %}var(--text-muted)
+                               {% elif item.watch_count == item.total_users %}var(--success)
+                               {% else %}var(--warning){% endif %}">
+        </div>
+      </div>
+    </div>
+
+    <div class="poster-info">
+      <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
+      <div class="poster-pct text-muted text-sm"
+           style="display:flex;align-items:center;gap:5px;margin-top:2px">
+        <span class="badge {% if item.type == 'Movie' %}badge-movie{% else %}badge-episode{% endif %}"
+              style="font-size:9px;padding:1px 5px;line-height:1.4">
+          {% if item.type == "Movie" %}{{ t('common.movie') }}{% else %}{{ t('common.serie') }}{% endif %}
+        </span>
+        {{ item.date_added or '—' }}
+      </div>
+      <div class="text-sm" style="margin-top:2px;
+        {% if item.watch_count == 0 %}color:var(--danger)
+        {% elif item.watch_count == item.total_users %}color:var(--success)
+        {% else %}color:var(--warning){% endif %}">
+        👁️ {{ item.watch_count }} / {{ item.total_users }}
+      </div>
+    </div>
+
+    <div class="poster-overlay">
+      <div style="text-align:center;padding:12px">
+        {% if item.seed.size_gb > 0 %}
+        <div style="font-size:15px;font-weight:700;color:var(--danger);margin-bottom:4px">
+          {{ item.seed.size_gb }} Go
+        </div>
+        {% endif %}
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">
+          {{ t('common.added') }} {{ item.date_added or '—' }}{% if item.age %} · {{ item.age }}{% endif %}
+        </div>
+        <div style="font-size:11px;margin-bottom:6px;
+          {% if item.watch_count == 0 %}color:var(--danger)
+          {% elif item.watch_count == item.total_users %}color:var(--success)
+          {% else %}color:var(--warning){% endif %}">
+          👁️ {{ item.watch_count }} / {{ item.total_users }} utilisateurs
+        </div>
+        {% if item.seed.found %}
+        <div style="font-size:11px;margin-bottom:8px;
+          {% if item.seed.rate_up > 0 or item.seed.peers_up > 0 %}color:var(--success)
+          {% elif item.seed.ratio > 0 %}color:var(--warning)
+          {% else %}color:var(--danger){% endif %}">
+          Ratio {{ item.seed.ratio }} · {{ item.seed.uploaded_gb }} Go↑
+        </div>
+        {% endif %}
+        {% if item.is_protected %}
+        <div style="font-size:11px;color:var(--warning)">🛡️ Protégé</div>
+        {% else %}
+        <button class="btn btn-danger btn-sm delete-btn"
+          data-id="{{ item.id }}"
+          data-type="{{ item.type }}"
+          data-title="{{ item.title | e }}">
+          🗑️ {{ t('common.delete') }}
+        </button>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  {% if q %}Aucun résultat pour "{{ q }}"
+  {% elif status != 'all' %}Aucun résultat pour ce filtre
+  {% else %}Catalogue vide{% endif %}
+</div>
+{% endif %}
+
+<!-- Pagination bas -->
+{% if total_pages > 1 %}
+<div style="display:flex;gap:8px;align-items:center;justify-content:center;
+            margin-top:24px;padding-bottom:20px">
+  {% if page > 1 %}
+  <a href="{{ nav_url(p=page-1) }}" class="btn btn-ghost btn-sm">← Précédent</a>
+  {% endif %}
+  <span class="text-muted text-sm" style="padding:0 12px">
+    Page {{ page }} / {{ total_pages }}
+  </span>
+  {% if page < total_pages %}
+  <a href="{{ nav_url(p=page+1) }}" class="btn btn-ghost btn-sm">Suivant →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshCatalogue(btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Chargement…';
+  fetch('/api/cache/refresh', { method: 'POST' })
+    .then(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('refresh', '1');
+      url.searchParams.set('page', '1');
+      window.location.href = url.toString();
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = '🔄 Actualiser'; });
+}
+
+document.querySelectorAll('.delete-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    deleteWithScan(
+      btn.dataset.id, btn.dataset.type, btn.dataset.title, '',
+      'ccard-' + btn.dataset.id
+    );
+  });
+});
+</script>
+{% endblock %}

@@ -2,31 +2,34 @@ import json
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from config import get_config, get_extra_paths, get_language, get_mode, get_protected, get_rules, get_scan_paths, get_scheduler_config, load_config, resolve_real_path, save_config, save_protected
-from i18n import SUPPORTED_LANGUAGES, get_js_strings, translate
+from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, resolve_real_path, save_config, save_protected
+from i18n import SUPPORTED_LANGUAGES
 from core import eventlog
 from core.pipeline import delete_episode, delete_movie, process_queue
 from core.sync import sync_watch_data
 from scheduler import INTERVAL_OPTIONS, restart_jobs
 from database import DeletionHistory, DeletionQueue, WatchEvent, get_db
-from scheduler import scheduler
 from services.factory import get_jellyfin, get_radarr, get_sonarr, get_transmission
+from api.templates import templates
+from api.route_suggestions import router as suggestions_router
+from api.route_transmission import router as transmission_router
+from api.route_cleanup import router as cleanup_router
+from api.route_logs import router as logs_router
+from api.route_catalogue import router as catalogue_router
 
 logger = logging.getLogger("purgearr.routes")
 router = APIRouter(tags=["dashboard"])
-templates = Jinja2Templates(directory="templates")
-templates.env.filters["fromjson"] = json.loads
-templates.env.globals["t"] = lambda key: translate(get_language(), key)
-templates.env.globals["lang_js"] = lambda: get_js_strings(get_language())
-templates.env.globals["SUPPORTED_LANGUAGES"] = SUPPORTED_LANGUAGES
+router.include_router(suggestions_router)
+router.include_router(transmission_router)
+router.include_router(cleanup_router)
+router.include_router(logs_router)
+router.include_router(catalogue_router)
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -296,64 +299,6 @@ def protected_remove(title: str = Form(""), jellyfin_id: str = Form("")):
     return RedirectResponse("/protected", status_code=303)
 
 
-# ── Transmission orphelins ────────────────────────────────────────────────────
-
-@router.get("/transmission", response_class=HTMLResponse)
-def transmission_page(request: Request):
-    try:
-        tr = get_transmission()
-        orphans = tr.find_orphaned_torrents()
-        all_torrents = tr.get_all_torrents_with_stats()
-    except Exception as e:
-        orphans = []
-        all_torrents = []
-        logger.error("[Transmission] Erreur : %s", e)
-    return templates.TemplateResponse(request=request, name="transmission.html",
-        context={"orphans": orphans, "all_torrents": all_torrents})
-
-
-@router.get("/api/transmission/orphans")
-def api_transmission_orphans():
-    try:
-        orphans = get_transmission().find_orphaned_torrents()
-        return JSONResponse([{"id": t["id"], "name": t["name"],
-                              "path": t["expected_path"]} for t in orphans])
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@router.post("/api/transmission/remove")
-def api_transmission_remove(torrent_id: int = Form(...)):
-    try:
-        get_transmission().stop_and_remove(torrent_id, delete_data=False)
-        eventlog.info("deletion", f"Torrent orphelin supprimé (id={torrent_id})")
-        return JSONResponse({"success": True})
-    except Exception as e:
-        eventlog.error("service", f"Suppression torrent id={torrent_id} KO : {e}")
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
-
-
-@router.post("/api/transmission/remove-all-orphans")
-def api_remove_all_orphans():
-    try:
-        tr = get_transmission()
-        orphans = tr.find_orphaned_torrents()
-        removed, failed = 0, 0
-        for t in orphans:
-            try:
-                tr.stop_and_remove(t["id"], delete_data=False)
-                removed += 1
-            except Exception:
-                failed += 1
-        level = "warning" if failed else "info"
-        eventlog.log_event(level, "deletion",
-                           f"Purge orphelins Transmission : {removed} supprimés, {failed} échec(s)")
-        return JSONResponse({"success": True, "removed": removed, "failed": failed})
-    except Exception as e:
-        eventlog.error("service", f"Purge orphelins KO : {e}")
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
-
-
 # ── API JSON ──────────────────────────────────────────────────────────────────
 
 @router.get("/api/status")
@@ -426,133 +371,6 @@ def scan_import(db: Session = Depends(get_db)):
 
 
 # ── Page Regardés (mode manuel) ───────────────────────────────────────────────
-
-@router.get("/suggestions", response_class=HTMLResponse)
-def suggestions_page(request: Request):
-    from datetime import datetime, timezone
-
-    jf = get_jellyfin()
-    cfg = get_config()
-    jellyfin_url = cfg["jellyfin"]["url"].rstrip("/")
-    jellyfin_api_key = cfg["jellyfin"]["api_key"]
-
-    users = jf.get_users()
-    if not users:
-        return templates.TemplateResponse(request=request, name="suggestions.html",
-                                          context={"never_watched": [], "partial_watched": [], "users": []})
-
-    admin_user = users[0]["Id"]
-
-    # Watched IDs par user
-    user_watched_movies  = {u["Id"]: jf.get_played_item_ids(u["Id"], "Movie")   for u in users}
-    user_watched_series  = {u["Id"]: jf.get_played_item_ids(u["Id"], "Episode") for u in users}
-    all_watched_movies   = set().union(*user_watched_movies.values())
-    all_watched_series   = set().union(*user_watched_series.values())
-
-    all_movies = jf.get_all_items_metadata(admin_user, "Movie",  limit=500)
-    all_series = jf.get_all_items_metadata(admin_user, "Series", limit=300)
-
-    protected_cfg   = get_protected()
-    protected_titles = {t.lower() for t in protected_cfg.get("titles", [])}
-    protected_ids    = set(protected_cfg.get("jellyfin_ids", []))
-    now = datetime.now(timezone.utc)
-
-    def _age(date_str: str):
-        if not date_str:
-            return "", ""
-        try:
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            days = (now - dt).days
-            label = f"{days // 365} an{'s' if days // 365 > 1 else ''}" if days >= 365 \
-                else f"{days // 30} mois" if days >= 30 \
-                else f"{days} jour{'s' if days > 1 else ''}"
-            return dt.strftime("%d/%m/%Y"), label
-        except Exception:
-            return "", ""
-
-    # Stats de seeding Transmission
-    try:
-        trans_torrents = get_transmission().get_all_torrents_with_stats()
-    except Exception:
-        trans_torrents = []
-
-    def _match_torrent(title: str):
-        tl = title.lower()
-        best = None
-        for t in trans_torrents:
-            name = t.get("name", "").lower()
-            if tl in name or name in tl:
-                return t
-            words = [w for w in tl.split() if len(w) >= 4]
-            if words and sum(1 for w in words if w in name) >= max(1, len(words) // 2):
-                best = t
-        return best
-
-    def _seed_info(title: str) -> dict:
-        t = _match_torrent(title)
-        if not t:
-            return {"found": False, "ratio": 0.0, "rate_up": 0, "peers_up": 0, "uploaded_gb": 0.0, "size_gb": 0.0}
-        uploaded_bytes = t.get("uploadedEver", 0) or 0
-        size_bytes = t.get("sizeWhenDone", 0) or 0
-        return {
-            "found":       True,
-            "ratio":       round(t.get("uploadRatio", 0) or 0, 2),
-            "rate_up":     t.get("rateUpload", 0) or 0,
-            "peers_up":    t.get("peersGettingFromUs", 0) or 0,
-            "uploaded_gb": round(uploaded_bytes / (1024 ** 3), 2),
-            "size_gb":     round(size_bytes / (1024 ** 3), 2),
-        }
-
-    def _process(it, watched_per_user, all_watched_ids):
-        item_id = it["Id"]
-        title   = it.get("Name", "?")
-        ud      = it.get("UserData", {})
-        is_fav  = ud.get("IsFavorite", False)
-        is_prot = item_id in protected_ids or title.lower() in protected_titles or is_fav
-        watch_count = sum(1 for ids in watched_per_user.values() if item_id in ids)
-        date_added, age = _age(it.get("DateCreated", ""))
-        return {
-            "id":          item_id,
-            "title":       title,
-            "type":        it.get("Type", "Movie"),
-            "is_favorite": is_fav,
-            "is_protected": is_prot,
-            "watch_count": watch_count,
-            "total_users": len(watched_per_user),
-            "date_added":  date_added,
-            "age":         age,
-            "image_url":   f"{jellyfin_url}/Items/{item_id}/Images/Primary?fillWidth=220&quality=80&api_key={jellyfin_api_key}",
-            "seed":        _seed_info(title),
-        }
-
-    items = (
-        [_process(it, user_watched_movies, all_watched_movies) for it in all_movies] +
-        [_process(it, user_watched_series, all_watched_series) for it in all_series]
-    )
-    items.sort(key=lambda x: x["date_added"] or "9999")
-
-    never_watched   = [i for i in items if i["watch_count"] == 0  and not i["is_protected"]]
-    partial_watched = [i for i in items if 0 < i["watch_count"] < i["total_users"] and not i["is_protected"]]
-
-    dead_seed = [
-        i for i in items
-        if i["seed"]["found"]
-        and i["seed"]["ratio"] == 0
-        and i["seed"]["rate_up"] == 0
-        and not i["is_protected"]
-    ]
-    dead_seed.sort(key=lambda x: x["seed"]["size_gb"], reverse=True)
-
-    return templates.TemplateResponse(
-        request=request, name="suggestions.html",
-        context={
-            "never_watched":   never_watched[:80],
-            "partial_watched": partial_watched[:40],
-            "dead_seed":       dead_seed[:60],
-            "users":           users,
-        },
-    )
-
 
 @router.get("/watched", response_class=HTMLResponse)
 def watched_page(
@@ -856,6 +674,10 @@ def manual_delete(
     if item_type == "Movie":
         result = delete_movie(db, item, triggered_by="manual", source_hash=source_hash)
     else:
+        if item_type == "Series":
+            # Suppression série complète depuis la page Orphelins
+            item["series_title"] = item_title
+            item["_force_delete_mode"] = "series"
         result = delete_episode(db, item, triggered_by="manual", source_hash=source_hash)
 
     return JSONResponse({
@@ -867,147 +689,3 @@ def manual_delete(
     })
 
 
-# ── Cleanup index — scan des restes ──────────────────────────────────────────
-
-@router.post("/api/cleanup/rescan")
-def api_cleanup_rescan():
-    """Scanne tous les items de l'index pour trouver les copies résiduelles."""
-    from core.cleanup_store import load_index, save_index
-    from core.fileops import scan_copies_smart
-
-    entries = load_index()
-    results = []
-    now = datetime.utcnow().isoformat()
-
-    for entry in entries:
-        if not entry.get("source_hash"):
-            continue
-        scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
-        scan = scan_copies_smart(
-            entry["item_title"], "", scan_paths,
-            source_hash=entry["source_hash"],
-        )
-        entry["remains_checked_at"] = now
-        entry["remains_found"] = scan["total_copies"]
-        if scan["total_copies"] > 0:
-            results.append({
-                "id":           entry["id"],
-                "item_title":   entry["item_title"],
-                "series_title": entry.get("series_title"),
-                "item_type":    entry.get("item_type", "Movie"),
-                "deleted_at":   entry["deleted_at"],
-                "torrent_name": entry.get("torrent_name"),
-                "source_hash":  entry["source_hash"][:12],
-                "copies":       scan["copies"],
-                "total_copies": scan["total_copies"],
-                "total_size":   scan["total_size_human"],
-            })
-
-    save_index(entries)
-    return JSONResponse({"found": len(results), "items": results})
-
-
-@router.post("/api/cleanup/delete-remains")
-def api_cleanup_delete_remains(entry_id: str = Form(...)):
-    """Supprime les restes d'un item spécifique."""
-    from core.cleanup_store import load_index, save_index
-    from core.fileops import scan_copies_smart, run_cleanup_from_scan
-
-    entries = load_index()
-    entry = next((e for e in entries if e["id"] == entry_id), None)
-    if not entry or not entry.get("source_hash"):
-        return JSONResponse({"error": "Entrée introuvable"}, status_code=404)
-
-    scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
-    scan = scan_copies_smart(
-        entry["item_title"], "", scan_paths,
-        source_hash=entry["source_hash"],
-    )
-    cleanup = run_cleanup_from_scan(scan)
-    entry["remains_found"] = 0
-    entry["remains_checked_at"] = datetime.utcnow().isoformat()
-    save_index(entries)
-    return JSONResponse(cleanup)
-
-
-# ── Journal événementiel (/logs) ─────────────────────────────────────────────
-
-@router.get("/logs", response_class=HTMLResponse)
-def logs_page(request: Request):
-    stats = eventlog.get_stats()
-    cfg_logs = get_config().get("logs", {})
-    return templates.TemplateResponse(
-        request=request, name="logs.html",
-        context={
-            "stats": stats,
-            "categories": eventlog.CATEGORY_LABELS,
-            "levels": eventlog.VALID_LEVELS,
-            "logs_enabled": cfg_logs.get("enabled", True),
-        },
-    )
-
-
-@router.get("/api/logs")
-def api_logs(
-    limit: int = 200,
-    offset: int = 0,
-    level: str = "",
-    category: str = "",
-    search: str = "",
-):
-    limit = max(1, min(int(limit), 500))
-    offset = max(0, int(offset))
-    return JSONResponse(eventlog.query_logs(
-        limit=limit,
-        offset=offset,
-        level=level or None,
-        category=category or None,
-        search=search or None,
-    ))
-
-
-@router.get("/api/logs/stats")
-def api_logs_stats():
-    return JSONResponse(eventlog.get_stats())
-
-
-@router.post("/api/logs/purge")
-def api_logs_purge():
-    n = eventlog.purge_all()
-    eventlog.info("config", f"Journal purgé ({n} entrées)")
-    return JSONResponse({"deleted": n})
-
-
-@router.post("/api/cleanup/purge-all")
-def api_cleanup_purge_all():
-    """Scanne et supprime TOUS les restes en une seule passe."""
-    from core.cleanup_store import load_index, save_index
-    from core.fileops import scan_copies_smart, run_cleanup_from_scan
-
-    entries = load_index()
-    total_deleted = 0
-    total_size = 0
-    now = datetime.utcnow().isoformat()
-
-    for entry in entries:
-        if not entry.get("source_hash"):
-            continue
-        scan_paths = get_scan_paths(entry.get("item_type", "Movie"))
-        scan = scan_copies_smart(
-            entry["item_title"], "", scan_paths,
-            source_hash=entry["source_hash"],
-        )
-        if scan["total_copies"] > 0:
-            cleanup = run_cleanup_from_scan(scan)
-            total_deleted += cleanup.get("copies_deleted", 0)
-            total_size += cleanup.get("size_bytes", 0)
-        entry["remains_found"] = 0
-        entry["remains_checked_at"] = now
-
-    save_index(entries)
-    from core.fileops import format_size
-    return JSONResponse({
-        "success": True,
-        "copies_deleted": total_deleted,
-        "size_human": format_size(total_size),
-    })

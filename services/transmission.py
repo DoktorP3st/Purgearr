@@ -48,7 +48,7 @@ TORRENT_FIELDS = ["id", "name", "status", "files", "downloadDir", "percentDone",
 
 TORRENT_STATS_FIELDS = [
     "id", "name", "status", "files", "downloadDir", "percentDone", "isFinished", "hashString",
-    "uploadRatio", "rateUpload", "uploadedEver", "peersGettingFromUs", "sizeWhenDone",
+    "uploadRatio", "rateUpload", "uploadedEver", "peersGettingFromUs", "sizeWhenDone", "totalSize",
 ]
 
 # status codes de Transmission
@@ -103,6 +103,26 @@ class TransmissionClient:
     def get_all_torrents_with_stats(self) -> List[Dict]:
         result = self._request("torrent-get", {"fields": TORRENT_STATS_FIELDS})
         return result.get("torrents", [])
+
+    def get_seeded_file_paths(self) -> set:
+        """
+        Retourne l'ensemble de tous les chemins (fichiers ET dossiers) actuellement
+        trackés par Transmission — utilisé pour la détection des orphelins par chemin.
+        """
+        result = self._request("torrent-get", {"fields": ["downloadDir", "name", "files"]})
+        seeded: set = set()
+        for t in result.get("torrents", []):
+            dl   = (t.get("downloadDir") or "").rstrip("/")
+            name = t.get("name") or ""
+            if not (dl and name):
+                continue
+            root = f"{dl}/{name}"
+            seeded.add(root)
+            for f in (t.get("files") or []):
+                fname = (f.get("name") or "").lstrip("/")
+                if fname:
+                    seeded.add(f"{dl}/{fname}")
+        return seeded
 
     def find_by_name(self, name: str) -> Optional[Dict]:
         """Recherche par nom normalisé (insensible aux points/tirets/année/qualité)."""

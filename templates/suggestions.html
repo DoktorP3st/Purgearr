@@ -22,13 +22,13 @@
         <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
              onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
 
-        <div class="poster-badges">
-          {% if item.type == "Movie" %}
-            <span class="badge badge-movie">{{ t('common.movie') }}</span>
-          {% else %}
-            <span class="badge badge-episode">{{ t('common.serie') }}</span>
-          {% endif %}
+        {% if item.seed.found and item.seed.size_gb > 0 %}
+        <div style="position:absolute;top:6px;left:6px;
+                    background:rgba(220,38,38,0.85);border-radius:6px;
+                    padding:2px 8px;font-size:11px;font-weight:700;color:#fff">
+          {{ item.seed.size_gb }} Go
         </div>
+        {% endif %}
 
         {% if item.age %}
         <div style="position:absolute;bottom:6px;right:6px;
@@ -64,7 +64,11 @@
 
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
-        <div class="poster-pct text-muted text-sm">
+        <div class="poster-pct text-muted text-sm" style="display:flex;align-items:center;gap:5px;margin-top:2px">
+          <span class="badge {% if item.type == 'Movie' %}badge-movie{% else %}badge-episode{% endif %}"
+                style="font-size:9px;padding:1px 5px;line-height:1.4">
+            {% if item.type == "Movie" %}{{ t('common.movie') }}{% else %}{{ t('common.serie') }}{% endif %}
+          </span>
           {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
         </div>
         <div class="text-sm" style="color:var(--danger);margin-top:2px">
@@ -118,14 +122,6 @@
         <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
              onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
 
-        <div class="poster-badges">
-          {% if item.type == "Movie" %}
-            <span class="badge badge-movie">{{ t('common.movie') }}</span>
-          {% else %}
-            <span class="badge badge-episode">{{ t('common.serie') }}</span>
-          {% endif %}
-        </div>
-
         {% if item.age %}
         <div style="position:absolute;bottom:6px;right:6px;
                     background:rgba(0,0,0,0.75);border-radius:6px;
@@ -156,7 +152,13 @@
 
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
-        <div class="poster-pct text-muted text-sm">{{ t('suggestions.added_label') }} {{ item.date_added or '—' }}</div>
+        <div class="poster-pct text-muted text-sm" style="display:flex;align-items:center;gap:5px;margin-top:2px">
+          <span class="badge {% if item.type == 'Movie' %}badge-movie{% else %}badge-episode{% endif %}"
+                style="font-size:9px;padding:1px 5px;line-height:1.4">
+            {% if item.type == "Movie" %}{{ t('common.movie') }}{% else %}{{ t('common.serie') }}{% endif %}
+          </span>
+          {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
+        </div>
         <div class="text-sm" style="margin-top:2px;
           {% if item.watch_count == 0 %}color:var(--danger){% else %}color:var(--warning){% endif %}">
           👁️ {{ item.watch_count }} / {{ item.total_users }} {{ t('suggestions.users_label') }}
@@ -210,13 +212,13 @@
         <img src="{{ item.image_url }}" alt="{{ item.title }}" class="poster-img"
              onerror="this.src='';this.closest('.poster-img-wrap').classList.add('no-img')" loading="lazy">
 
-        <div class="poster-badges">
-          {% if item.type == "Movie" %}
-            <span class="badge badge-movie">{{ t('common.movie') }}</span>
-          {% else %}
-            <span class="badge badge-episode">{{ t('common.serie') }}</span>
-          {% endif %}
+        {% if item.seed.found and item.seed.size_gb > 0 %}
+        <div style="position:absolute;top:6px;left:6px;
+                    background:rgba(220,38,38,0.85);border-radius:6px;
+                    padding:2px 8px;font-size:11px;font-weight:700;color:#fff">
+          {{ item.seed.size_gb }} Go
         </div>
+        {% endif %}
 
         {% if item.age %}
         <div style="position:absolute;bottom:6px;right:6px;
@@ -255,7 +257,13 @@
 
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
-        <div class="poster-pct text-muted text-sm">{{ t('suggestions.added_label') }} {{ item.date_added or '—' }}</div>
+        <div class="poster-pct text-muted text-sm" style="display:flex;align-items:center;gap:5px;margin-top:2px">
+          <span class="badge {% if item.type == 'Movie' %}badge-movie{% else %}badge-episode{% endif %}"
+                style="font-size:9px;padding:1px 5px;line-height:1.4">
+            {% if item.type == "Movie" %}{{ t('common.movie') }}{% else %}{{ t('common.serie') }}{% endif %}
+          </span>
+          {{ t('suggestions.added_label') }} {{ item.date_added or '—' }}
+        </div>
         <div class="text-sm" style="color:var(--warning);margin-top:2px">
           👁️ {{ item.watch_count }} / {{ item.total_users }} {{ t('suggestions.users_label') }}
         </div>
