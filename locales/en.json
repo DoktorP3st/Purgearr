@@ -3,7 +3,6 @@
     "dashboard": "Dashboard",
     "watched": "Watched",
     "suggestions": "Suggestions",
-    "orphelins": "Orphans",
     "catalogue": "My Catalogue",
     "history": "History",
     "protected": "Protected",
@@ -107,19 +106,6 @@
     "dead_title": "💀 Taking up space without seeding",
     "dead_subtitle": "Ratio 0 — nobody downloading, wasted space",
     "dead_ratio_zero": "Nothing uploaded — ratio 0"
-  },
-  "orphelins": {
-    "title": "Jellyfin Orphans",
-    "subtitle": "Present in Jellyfin but missing from Transmission",
-    "contents": "items",
-    "empty": "✓ All content has a torrent in Transmission",
-    "trans_down": "⚠ Transmission unreachable — cannot detect orphans",
-    "watched_by": "Watched by",
-    "never_watched": "Never watched",
-    "added_label": "Added",
-    "users_label": "users",
-    "delete_btn": "Delete",
-    "no_torrent_badge": "Not in Transmission"
   },
   "history": {
     "title": "Deletion history",

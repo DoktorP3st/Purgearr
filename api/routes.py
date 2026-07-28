@@ -735,7 +735,7 @@ def manual_delete(
         result = delete_movie(db, item, triggered_by="manual", source_hash=source_hash)
     else:
         if item_type == "Series":
-            # Suppression série complète depuis la page Orphelins
+            # Suppression série complète (ex: depuis Mon Catalogue)
             item["series_title"] = item_title
             item["_force_delete_mode"] = "series"
         result = delete_episode(db, item, triggered_by="manual", source_hash=source_hash)
