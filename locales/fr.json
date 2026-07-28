@@ -170,6 +170,9 @@
     "remove_btn": "Retirer",
     "by_id": "Par ID Jellyfin",
     "by_title": "Par titre",
+    "by_favorite": "Favori Jellyfin",
+    "favorited_by": "Favori de :",
+    "remove_favorite_btn": "Retirer le favori",
     "none_protected": "Aucun élément protégé — tout peut être supprimé automatiquement"
   },
   "logs": {

@@ -67,56 +67,62 @@ def format_size(bytes_: int) -> str:
 
 # ── Scan par hash ─────────────────────────────────────────────────────────────
 
+def collect_signatures(path: str) -> List[Dict]:
+    """
+    Construit la liste des signatures (inode, taille, hash) de tous les fichiers
+    vidéo sous path. Pour un fichier unique : une seule signature. Pour un dossier
+    (ex: série entière) : une signature par épisode.
+    À appeler AVANT toute suppression Radarr/Sonarr — path doit encore exister.
+    """
+    sigs: List[Dict] = []
+    if not path:
+        return sigs
+    if os.path.isfile(path):
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = None
+        sigs.append({"inode": _inode_key(path), "size": size, "hash": _file_hash(path)})
+    elif os.path.isdir(path):
+        for root, _dirs, files in os.walk(path):
+            for fname in sorted(files):
+                if Path(fname).suffix.lower() not in VIDEO_EXTENSIONS:
+                    continue
+                fpath = os.path.join(root, fname)
+                try:
+                    size = os.path.getsize(fpath)
+                except OSError:
+                    size = None
+                sigs.append({"inode": _inode_key(fpath), "size": size, "hash": _file_hash(fpath)})
+    return sigs
+
+
 def scan_copies_smart(
     title: str,
     known_path: str,
     extra_paths: List[str],
-    source_hash: str = "",
+    known_signatures: Optional[List[Dict]] = None,
 ) -> Dict:
     """
     Trouve les copies dans extra_paths par inode (hardlinks) puis hash SHA-256.
-    source_hash : hash pré-calculé avant suppression Radarr/Sonarr.
+    known_signatures : signatures pré-calculées avant suppression Radarr/Sonarr
+    (une par fichier vidéo — un dossier série entière en a donc plusieurs).
+    Si non fournies et que known_path existe encore (scan de prévisualisation
+    avant suppression), elles sont calculées ici.
     Aucun matching par titre — uniquement contenu identique.
     """
-    known_hash   = source_hash
-    known_inode  = None
-    known_real   = ""
-    known_is_dir = False
-    known_size: Optional[int] = None
+    known_real   = os.path.realpath(known_path) if known_path and os.path.exists(known_path) else ""
+    known_is_dir = bool(known_path) and os.path.isdir(known_path)
 
-    if known_path and os.path.isfile(known_path):
-        known_real  = os.path.realpath(known_path)
-        known_inode = _inode_key(known_path)
-        known_hash  = _file_hash(known_path)
-        try:
-            known_size = os.path.getsize(known_path)
-        except OSError:
-            known_size = None
-    elif known_path and os.path.isdir(known_path):
-        known_real   = os.path.realpath(known_path)
-        known_is_dir = True
-        # Premier fichier vidéo dans le dossier — sert de référence inode/hash/taille
-        for _r, _d, _f in os.walk(known_path):
-            for _fn in sorted(_f):
-                if Path(_fn).suffix.lower() in VIDEO_EXTENSIONS:
-                    _fp = os.path.join(_r, _fn)
-                    known_inode = _inode_key(_fp)
-                    if not known_hash:
-                        known_hash = _file_hash(_fp)
-                    try:
-                        known_size = os.path.getsize(_fp)
-                    except OSError:
-                        known_size = None
-                    break
-            if known_hash:
-                break
+    if known_signatures is None:
+        known_signatures = collect_signatures(known_path)
 
     # Taille du fichier/dossier source (pour affichage dans la modal)
     source_size_bytes = 0
     if known_path and (os.path.isfile(known_path) or os.path.isdir(known_path)):
         source_size_bytes, _ = _calc_size(known_path)
 
-    if not known_hash:
+    if not known_signatures:
         return {
             "title": title, "known_path": known_path, "source_hash": "",
             "source_size_bytes": source_size_bytes,
@@ -128,7 +134,18 @@ def scan_copies_smart(
             "has_inode_match": False, "skipped": True,
         }
 
-    strategy = "inode+hash" if known_inode else "hash"
+    known_inodes = {s["inode"] for s in known_signatures if s.get("inode")}
+    by_size: Dict[int, List[Dict]] = {}
+    # signatures sans taille connue (ex: hash historique seul depuis cleanup_index.json)
+    # — impossible de les préfiltrer par taille, on les compare à tout fichier candidat
+    hash_only: List[Dict] = []
+    for s in known_signatures:
+        if s.get("size") is not None:
+            by_size.setdefault(s["size"], []).append(s)
+        elif s.get("hash"):
+            hash_only.append(s)
+
+    strategy = "inode+hash" if known_inodes else "hash"
     found: List[Dict] = []
     reported: set = set()  # global à tous les base paths pour éviter les doublons
 
@@ -164,18 +181,21 @@ def scan_copies_smart(
                         pass
 
                     match_method: Optional[str] = None
-                    if known_inode and _inode_key(fpath) == known_inode:
+                    finode = _inode_key(fpath)
+                    if finode and finode in known_inodes:
                         match_method = "inode"
                     else:
-                        # Skip hash si taille différente (rapide, évite d'ouvrir le fichier)
-                        if known_size is not None:
-                            try:
-                                if os.path.getsize(fpath) != known_size:
-                                    continue
-                            except OSError:
-                                continue
-                        if _file_hash(fpath) == known_hash:
-                            match_method = "hash"
+                        # Préfiltre par taille quand connue (rapide, évite d'ouvrir le fichier) ;
+                        # les signatures sans taille (hash_only) sont testées systématiquement
+                        try:
+                            fsize = os.path.getsize(fpath)
+                        except OSError:
+                            continue
+                        candidates = by_size.get(fsize, []) + hash_only
+                        if candidates:
+                            fhash = _file_hash(fpath)
+                            if any(fhash == c["hash"] for c in candidates if c.get("hash")):
+                                match_method = "hash"
 
                     if not match_method:
                         continue
@@ -234,7 +254,7 @@ def scan_copies_smart(
     return {
         "title":              title,
         "known_path":         known_path,
-        "source_hash":        known_hash,
+        "source_hash":        known_signatures[0]["hash"] if known_signatures else "",
         "source_size_bytes":  source_size_bytes,
         "source_size_human":  format_size(source_size_bytes),
         "strategy":           strategy,
@@ -269,13 +289,39 @@ def delete_copy(entry: Dict) -> Dict:
         return {**entry, "success": False, "error": str(e)}
 
 
+def _prune_empty_parents(path: str, roots: List[str]):
+    """
+    Remonte l'arborescence depuis le parent de path et supprime les dossiers devenus
+    vides, jusqu'à — mais sans jamais supprimer — une des racines configurées
+    (extra_paths / library_root_*). Évite de laisser des dossiers wrapper vides
+    (ex: séries imbriquées NOM/NOM/épisodes) après suppression d'une release.
+    """
+    roots_norm = {os.path.normpath(r) for r in roots if r and r.strip()}
+    parent = os.path.dirname(os.path.normpath(path))
+    while parent and os.path.isdir(parent) and os.path.normpath(parent) not in roots_norm:
+        try:
+            if os.listdir(parent):
+                break
+            os.rmdir(parent)
+            logger.info("[Fileops] Dossier vide supprimé : %s", parent)
+        except OSError:
+            break
+        next_parent = os.path.dirname(parent)
+        if next_parent == parent:
+            break
+        parent = next_parent
+
+
 def _delete_companions(file_path: str):
     p = Path(file_path)
     parent, stem = p.parent, p.stem
     for sibling in list(parent.iterdir()):
         if sibling == p:
             continue
-        if sibling.stem.startswith(stem) and sibling.suffix.lower() in METADATA_EXTENSIONS:
+        # Égal au stem, ou stem + suffixe de langue/tag (ex: Movie.fr.srt) — mais pas
+        # un stem qui prolonge un numéro (Show.S01E01 ne doit pas matcher Show.S01E010).
+        if (sibling.stem == stem or sibling.stem.startswith(stem + ".")) \
+                and sibling.suffix.lower() in METADATA_EXTENSIONS:
             try:
                 sibling.unlink()
             except Exception:
@@ -293,12 +339,16 @@ def _delete_companions(file_path: str):
         pass
 
 
-def run_cleanup_from_scan(scan_result: Dict) -> Dict:
+def run_cleanup_from_scan(scan_result: Dict, roots: Optional[List[str]] = None) -> Dict:
     copies = scan_result.get("copies", [])
     if not copies:
         return {"skipped": True, "copies_found": 0}
 
-    results     = [delete_copy(c) for c in copies]
+    results = [delete_copy(c) for c in copies]
+    if roots:
+        for r in results:
+            if r["success"]:
+                _prune_empty_parents(r["path"], roots)
     ok          = [r for r in results if r["success"]]
     total_bytes = sum(r["size_bytes"] for r in ok)
     total_files = sum(r["file_count"] for r in ok)
@@ -326,9 +376,13 @@ def run_cleanup_from_scan(scan_result: Dict) -> Dict:
     }
 
 
-def run_cleanup(title: str, file_path: str, extra_paths: List[str], source_hash: str = "") -> Dict:
-    """Appelé depuis pipeline.py après suppression Radarr/Sonarr."""
+def run_cleanup(title: str, file_path: str, extra_paths: List[str], known_signatures: Optional[List[Dict]] = None) -> Dict:
+    """
+    Appelé depuis pipeline.py après suppression Radarr/Sonarr.
+    known_signatures doit être précalculé AVANT la suppression (via collect_signatures)
+    car le fichier/dossier source n'existe généralement plus au moment de cet appel.
+    """
     if not extra_paths:
         return {"skipped": True, "copies_found": 0}
-    scan = scan_copies_smart(title, file_path, extra_paths, source_hash=source_hash)
-    return run_cleanup_from_scan(scan)
+    scan = scan_copies_smart(title, file_path, extra_paths, known_signatures=known_signatures)
+    return run_cleanup_from_scan(scan, roots=extra_paths)

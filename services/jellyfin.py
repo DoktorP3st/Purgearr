@@ -179,6 +179,18 @@ class JellyfinClient:
         user_data = self.get_user_data(user_id, item_id)
         return user_data.get("IsFavorite", False)
 
+    def remove_favorite(self, user_id: str, item_id: str) -> bool:
+        return self._delete(f"/Users/{user_id}/FavoriteItems/{item_id}")
+
+    def get_favorite_items(self, user_id: str) -> List[Dict]:
+        """Films/séries mis en favori par cet utilisateur."""
+        result = self._get(f"/Users/{user_id}/Items", params={
+            "Filters": "IsFavorite",
+            "IncludeItemTypes": "Movie,Series",
+            "Recursive": True,
+        })
+        return result.get("Items", [])
+
     def is_favorite_any_user(self, item_id: str) -> bool:
         """Retourne True si au moins un utilisateur a mis l'item en favori."""
         for user in self.get_users():

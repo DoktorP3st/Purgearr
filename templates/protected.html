@@ -60,15 +60,30 @@
       <div class="poster-info">
         <div class="poster-title" title="{{ item.title }}">{{ item.title }}</div>
         <div class="poster-pct text-muted text-sm">
-          {% if item.source == 'id' %}{{ t('protected.by_id') }}{% else %}{{ t('protected.by_title') }}{% endif %}
+          {% if item.source == 'id' %}{{ t('protected.by_id') }}
+          {% elif item.source == 'title' %}{{ t('protected.by_title') }}
+          {% else %}{{ t('protected.by_favorite') }}{% endif %}
         </div>
+        {% if item.favorited_by %}
+        <div class="poster-pct text-muted text-sm" title="{{ item.favorited_by | map(attribute='name') | join(', ') }}">
+          ❤️ {{ t('protected.favorited_by') }} {{ item.favorited_by | map(attribute='name') | join(', ') }}
+        </div>
+        {% endif %}
       </div>
 
-      <!-- Overlay avec bouton retirer -->
+      <!-- Overlay avec bouton retirer (uniquement pour la whitelist manuelle) -->
       <div class="poster-overlay">
         <div style="text-align:center;padding:12px">
           <div style="font-size:28px;margin-bottom:8px">🔒</div>
           <div style="font-size:12px;color:var(--warning);font-weight:600;margin-bottom:12px">{{ t('protected.protected_label') }}</div>
+          {% if item.favorited_by %}
+          <form method="post" action="/protected/remove_favorite" style="display:inline">
+            <input type="hidden" name="jellyfin_id" value="{{ item.id }}">
+            <input type="hidden" name="user_ids" value="{{ item.favorited_by | map(attribute='id') | join(',') }}">
+            <button type="submit" class="btn btn-danger btn-sm">💔 {{ t('protected.remove_favorite_btn') }}</button>
+          </form>
+          {% endif %}
+          {% if item.source != 'favorite' %}
           <form method="post" action="/protected/remove" style="display:inline">
             {% if item.id %}
             <input type="hidden" name="jellyfin_id" value="{{ item.id }}">
@@ -77,6 +92,7 @@
             {% endif %}
             <button type="submit" class="btn btn-danger btn-sm">🗑️ {{ t('protected.remove_btn') }}</button>
           </form>
+          {% endif %}
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 import yaml
 from pathlib import Path
 from typing import Dict, Any
@@ -13,7 +14,11 @@ DATA_DIR       = Path(__file__).parent / "data"
 CONFIG_PATH    = DATA_DIR / "config.json"
 PROTECTED_PATH = DATA_DIR / "protected.json"
 
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Sérialise les cycles lecture-modification-écriture de protected.json
+# (ex: deux ajouts à la whitelist en parallèle s'écraseraient sinon l'un l'autre).
+PROTECTED_LOCK = threading.Lock()
 
 _LEGACY_YAML = Path(__file__).parent / "config.yaml"
 _config: Dict[str, Any] = {}
@@ -21,7 +26,7 @@ _config: Dict[str, Any] = {}
 
 def _atomic_write_json(path: Path, data: Any):
     """Écrit dans un fichier temporaire puis rename atomique — évite la corruption si crash."""
-    path.parent.mkdir(exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -142,7 +147,7 @@ def get_scan_paths(item_type: str = "") -> list:
 def resolve_real_path(jf_path: str, item_type: str = "") -> str:
     """
     Jellyfin renvoie un chemin avec un préfixe de mount différent du filesystem réel.
-    Teste toutes les racines connues (movies, series, extra_paths) dans l'ordre,
+    Teste la racine du bon type (movies ou series selon item_type) + extra_paths,
     en strippant progressivement les composants du chemin Jellyfin.
     """
     import os
@@ -156,17 +161,13 @@ def resolve_real_path(jf_path: str, item_type: str = "") -> str:
 
     cfg = get_config()
 
-    # Racine du bon type en premier, l'autre en fallback, puis extra_paths
+    # Un film n'est jamais dans la racine séries et inversement (Jellyfin fournit
+    # toujours le type) — pas de fallback croisé : ça évite de scanner la mauvaise
+    # racine et de résoudre par coïncidence vers un fichier d'un autre type.
     if item_type in ("Episode", "Series"):
-        roots = [
-            cfg.get("library_root_series", "").strip(),
-            cfg.get("library_root_movies", "").strip(),
-        ]
+        roots = [cfg.get("library_root_series", "").strip()]
     else:
-        roots = [
-            cfg.get("library_root_movies", "").strip(),
-            cfg.get("library_root_series", "").strip(),
-        ]
+        roots = [cfg.get("library_root_movies", "").strip()]
     roots += [p.strip() for p in cfg.get("extra_paths", [])]
 
     parts = Path(jf_path).parts

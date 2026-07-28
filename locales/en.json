@@ -170,6 +170,9 @@
     "remove_btn": "Remove",
     "by_id": "By Jellyfin ID",
     "by_title": "By title",
+    "by_favorite": "Jellyfin favorite",
+    "favorited_by": "Favorited by:",
+    "remove_favorite_btn": "Remove favorite",
     "none_protected": "No protected items — everything can be automatically deleted"
   },
   "logs": {

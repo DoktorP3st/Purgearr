@@ -10,6 +10,7 @@ Désactivable via config `logs.enabled` (activé par défaut).
 
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -55,6 +56,7 @@ _MAX_CONTEXT_LEN = 2000
 _PURGE_EVERY_N_WRITES = 250    # purge périodique (pas à chaque écriture)
 
 _write_counter = 0
+_counter_lock = threading.Lock()
 
 
 # ── API principale ────────────────────────────────────────────────────────────
@@ -84,9 +86,13 @@ def log_event(level: str, category: str, message: str, **context: Any) -> None:
         db.add(entry)
         db.commit()
 
-        _write_counter += 1
-        if _write_counter >= _PURGE_EVERY_N_WRITES:
-            _write_counter = 0
+        should_purge = False
+        with _counter_lock:
+            _write_counter += 1
+            if _write_counter >= _PURGE_EVERY_N_WRITES:
+                _write_counter = 0
+                should_purge = True
+        if should_purge:
             _purge(db, cfg)
     except Exception as e:
         logger.warning(f"[EventLog] Écriture KO : {e}")

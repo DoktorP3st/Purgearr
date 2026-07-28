@@ -1,203 +1,109 @@
-# ⚡ Purgearr
+<div align="center">
 
-[🇫🇷 Français](#-purgearr--français) · [🇬🇧 English](#-purgearr--english)
+# Purgearr
+
+[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.md)
+[![fr](https://img.shields.io/badge/lang-fr-blue.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.fr.md)
+[![es](https://img.shields.io/badge/lang-es-yellow.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.es.md)
+[![pt](https://img.shields.io/badge/lang-pt-green.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.pt.md)
+[![de](https://img.shields.io/badge/lang-de-lightgrey.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.de.md)
+[![it](https://img.shields.io/badge/lang-it-008C45.svg)](https://github.com/Lekarov/Purgearr/blob/master/README.it.md)
+
+**Kill the clutter. Keep the classics. One interface for your entire media library.**
+
+![Status](https://img.shields.io/badge/status-beta-orange?style=flat-square)
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-6b7491?style=flat-square)
+![Jellyfin](https://img.shields.io/badge/Jellyfin-00A4DC?style=flat-square&logo=jellyfin&logoColor=white) ![Radarr](https://img.shields.io/badge/Radarr-FFC230?style=flat-square) ![Sonarr](https://img.shields.io/badge/Sonarr-35C5F4?style=flat-square) ![Transmission](https://img.shields.io/badge/Transmission-CC0000?style=flat-square)
+![Languages](https://img.shields.io/badge/languages-6-orange?style=flat-square)
+
+</div>
 
 ---
 
-## ⚡ Purgearr — Français
+## Screenshots
 
-> **🚧 Version bêta — En développement actif**  
-> Développé pour un usage personnel sur NAS Raspberry Pi. Fonctionnel au quotidien, mais certaines fonctionnalités sont encore en cours de stabilisation.
+<div align="center">
 
-> **⛔ Mode automatique désactivé**  
-> Le mode de suppression automatique (webhook Jellyfin → queue → suppression différée) **ne doit pas être utilisé pour l'instant**. Utilisez uniquement la suppression manuelle depuis l'interface.
-
-**Purgearr** est une interface web de gestion de bibliothèque pour les setups **Jellyfin + Radarr + Sonarr + Transmission**. Il donne une vue complète de ton catalogue, identifie les contenus jamais regardés, les torrents morts qui occupent de l'espace, et permet de supprimer proprement via Radarr/Sonarr + Jellyfin.
-
-### Aperçu
-
-| 👁️ Page Regardés | 🚫 Suggestions — Jamais regardés |
-|---|---|
+| Watched | Suggestions — Never watched |
+|:---:|:---:|
 | ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) | ![Never watched](https://i.ibb.co/h1Y1vT7w/Capture-d-cran-2026-07-24-163441.png) |
 
-| 💀 Torrents morts (ratio 0) | 🗑️ Historique des suppressions |
-|---|---|
+| Dead torrents (ratio 0) | Deletion history |
+|:---:|:---:|
 | ![Dead seed](https://i.ibb.co/DfB94tz7/Capture-d-cran-2026-07-24-163523.png) | ![History](https://i.ibb.co/t98YjsP/Capture-d-cran-2026-07-24-163616.png) |
 
-| 📋 Journal événementiel | ✅ Modal de confirmation |
-|---|---|
+| Event log | Confirmation modal |
+|:---:|:---:|
 | ![Event log](https://i.ibb.co/7NWmHB7m/Capture-d-cran-2026-07-24-163649.png) | ![Confirm deletion](https://i.ibb.co/WCCbMbD/Capture-d-cran-2026-07-24-163748.png) |
 
-### Fonctionnalités
+</div>
 
-- 📊 **Dashboard** — stats globales, queue de suppression, historique récent
-- 👁️ **Regardés** — liste des contenus vus, progression par utilisateur, statut "prêt à supprimer"
-- 🧹 **Suggestions** — jamais regardés / vus partiellement / torrents morts (ratio 0) + stats seeding Transmission en temps réel
-- 📚 **Mon Catalogue** — vue complète du catalogue Jellyfin, Films & Séries séparés, paginée (60/page), avec :
-  - Recherche par titre
-  - Tri : date d'ajout, alphabétique, poids
-  - Filtres : jamais vu, partiel, tous vus, en seed actif, seedé inactif, ratio mort, sans torrent
-  - Poids total Films / Séries affiché (agrégé depuis Transmission, dédupliqué multi-tracker)
-  - Suppression directe depuis la carte
-- 🛡️ **Protection** — whitelist films/séries à ne jamais supprimer (recherche live Jellyfin), favoris Jellyfin automatiquement protégés
-- 🗑️ **Historique** — toutes les suppressions + scanner les copies résiduelles
-- 📋 **Logs** — journal événementiel filtrable
-- ⚙️ **Paramètres** — configuration complète depuis l'interface web
-- 🌐 **Multi-langue** — Français / English
-- 🧲 **Multi-tracker** — détecte tous les torrents qui seedent le même fichier sur plusieurs trackers (dédupliqué pour le calcul de taille)
-- 📋 **Détection copies/hardlinks** — scan inode puis SHA-256 avant suppression
-- 👥 **Multi-utilisateurs** — définir des utilisateurs requis (tous doivent avoir regardé)
-- 🔍 **Modal de confirmation** — avant chaque suppression, affiche exactement ce qui sera effacé
+---
 
-### Prérequis
+## What it does
 
-- Python 3.10+
-- Radarr, Sonarr, Transmission et Jellyfin accessibles en réseau local
+Purgearr is a self-hosted web interface for **Jellyfin + Radarr + Sonarr + Transmission** setups. It gives you a complete view of your media library, surfaces content that's never been watched, flags dead torrents wasting disk space, and lets you delete cleanly — removing the file, the Radarr/Sonarr entry, and the torrent in a single action.
 
-### Installation
+Never watched it. Never will. Gone.
 
-**1. Cloner le dépôt**
+---
 
-```bash
-git clone https://github.com/Lekarov/Purgearr.git
-cd Purgearr
-```
+## Features
 
-**2. Environnement virtuel + dépendances**
+- **Dashboard** — global library stats, deletion queue, recent history
+- **Watched** — full list of viewed content with per-user progress and "ready to delete" status
+- **Suggestions** — never watched / partially watched / dead torrents (ratio 0) with live Transmission seeding stats
+- **Catalogue** — complete Jellyfin library view, Films & Series separated, paginated (60/page), with search, sort, and status filters
+- **Whitelist** — protect any title permanently; Jellyfin favorites are automatically protected
+- **History** — all past deletions with a leftover copy scanner
+- **Event log** — filterable journal of every operation, with category and level filters
+- **Settings** — full configuration from the web UI, no file editing required
+- **Multi-user** — define required watchers; deletion is only suggested when all have watched
+- **Multi-tracker** — detects all torrents seeding the same file across multiple trackers, deduplicated for size calculation
+- **Hardlink detection** — inode + SHA-256 scan before deletion to catch duplicate copies
+- **Confirmation modal** — shows exactly what will be removed before any deletion
+- **Language** — 6 languages
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+---
 
-**3. Premier démarrage**
+## Pages
 
-```bash
-python main.py
-```
+| URL | Description |
+|---|---|
+| `/` | Dashboard — stats, queue, recent history |
+| `/watched` | Viewed content list |
+| `/suggestions` | Never watched / dead torrents / partially watched |
+| `/catalogue` | Full catalogue — search, sort, filter |
+| `/protected` | Whitelist management |
+| `/history` | Past deletions + leftover copy scanner |
+| `/transmission` | Orphaned torrents + full torrent list |
+| `/logs` | Event journal |
+| `/settings` | Configuration |
 
-Interface accessible sur `http://[IP]:7979`. Configure tous les services depuis **⚙️ Paramètres**.
+---
 
-**4. Dossier `data/` — ne jamais supprimer**
+## Tech stack
 
-```
-data/
-├── config.json        ← configuration (URLs, clés API, règles)
-├── protected.json     ← whitelist des contenus protégés
-├── purgearr.db        ← historique, queue, événements
-└── cache/             ← cache temporaire (régénéré automatiquement)
-```
-
-> Ce dossier est exclu de git — tes données sont toujours préservées lors des mises à jour.
-
-### Service systemd (Raspberry Pi)
-
-```ini
-[Unit]
-Description=Purgearr Media Manager
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/chemin/vers/Purgearr
-ExecStart=/chemin/vers/Purgearr/venv/bin/python main.py
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable purgearr
-sudo systemctl start purgearr
-```
-
-### Webhook Jellyfin (optionnel — ne pas activer le mode auto)
-
-Le webhook reçoit les événements `PlaybackStop` de Jellyfin en temps réel. Installe le plugin **Webhook** depuis le catalogue Jellyfin :
-
-- **URL** : `http://[IP]:7979/webhook/jellyfin`
-- **Événement** : `Playback Stop`
-
-> ⛔ Même avec le webhook actif, **ne pas activer le mode Auto** dans les paramètres — cette fonctionnalité est en cours de stabilisation.
-
-### Mise à jour
-
-```bash
-git pull
-# Redémarrer le service
-sudo systemctl restart purgearr
-```
-
-### Stack technique
-
-| Composant | Technologie |
+| Component | Technology |
 |---|---|
 | Backend | FastAPI + Uvicorn |
-| Base de données | SQLite via SQLAlchemy |
+| Database | SQLite via SQLAlchemy |
 | Scheduler | APScheduler |
 | Templates | Jinja2 |
-| Frontend | HTML/CSS/JS vanilla |
-
-### Licence
-
-MIT — utilise et adapte librement.
+| Frontend | Vanilla HTML / CSS / JS |
+| i18n | Custom module — 6 languages |
 
 ---
 
-## ⚡ Purgearr — English
-
-> **🚧 Beta — Active development**  
-> Built for personal use on a Raspberry Pi NAS. Fully functional for daily use, but some features are still being stabilized.
-
-> **⛔ Auto mode is disabled**  
-> The automatic deletion mode (Jellyfin webhook → queue → deferred deletion) **must not be used at this time**. Use manual deletion from the interface only.
-
-**Purgearr** is a web-based library management interface for **Jellyfin + Radarr + Sonarr + Transmission** setups. It gives you a complete view of your catalogue, identifies never-watched content, dead torrents wasting space, and lets you cleanly delete via Radarr/Sonarr + Jellyfin.
-
-### Screenshots
-
-| 👁️ Watched | 🚫 Suggestions — Never watched |
-|---|---|
-| ![Watched](https://i.ibb.co/0y7d7PzZ/Capture-d-cran-2026-07-24-163340.png) | ![Never watched](https://i.ibb.co/h1Y1vT7w/Capture-d-cran-2026-07-24-163441.png) |
-
-| 💀 Dead torrents (ratio 0) | 🗑️ Deletion history |
-|---|---|
-| ![Dead seed](https://i.ibb.co/DfB94tz7/Capture-d-cran-2026-07-24-163523.png) | ![History](https://i.ibb.co/t98YjsP/Capture-d-cran-2026-07-24-163616.png) |
-
-| 📋 Event log | ✅ Confirm deletion modal |
-|---|---|
-| ![Event log](https://i.ibb.co/7NWmHB7m/Capture-d-cran-2026-07-24-163649.png) | ![Confirm deletion](https://i.ibb.co/WCCbMbD/Capture-d-cran-2026-07-24-163748.png) |
-
-### Features
-
-- 📊 **Dashboard** — global stats, deletion queue, recent history
-- 👁️ **Watched** — viewed content list, per-user progress, "ready to delete" status
-- 🧹 **Suggestions** — never watched / partially watched / dead torrents (ratio 0) + live Transmission seeding stats
-- 📚 **My Catalogue** — full Jellyfin catalogue view, Films & Series separated, paginated (60/page), with:
-  - Title search
-  - Sort by: date added, alphabetical, file size
-  - Filter by: never watched, partial, all watched, actively seeding, idle seed, dead ratio, no torrent
-  - Total size for Films / Series (aggregated from Transmission, multi-tracker deduplicated)
-  - Direct deletion from the card
-- 🛡️ **Protection** — whitelist of movies/shows to never delete (live Jellyfin search), Jellyfin favorites automatically protected
-- 🗑️ **History** — all past deletions + leftover copy scanner
-- 📋 **Logs** — filterable event journal
-- ⚙️ **Settings** — full configuration from the web UI
-- 🌐 **Multi-language** — French / English
-- 🧲 **Multi-tracker** — detects all torrents seeding the same file across multiple trackers (deduplicated for size calculation)
-- 📋 **Copy/hardlink detection** — inode then SHA-256 scan before deletion
-- 👥 **Multi-user** — define required users (all must have watched before deletion is suggested)
-- 🔍 **Confirmation modal** — before each deletion, shows exactly what will be removed
-
-### Requirements
+## Requirements
 
 - Python 3.10+
-- Radarr, Sonarr, Transmission and Jellyfin accessible on the local network
+- Jellyfin, Radarr, Sonarr and Transmission accessible on your local network
 
-### Installation
+---
+
+## Install
 
 **1. Clone the repository**
 
@@ -214,15 +120,15 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**3. First launch**
+**3. Start**
 
 ```bash
 python main.py
 ```
 
-Interface available at `http://[IP]:7979`. Configure all services from the **⚙️ Settings** page.
+The interface is available at `http://[IP]:7979`. Configure all services from the **Settings** page on first launch.
 
-**4. `data/` folder — never delete**
+**4. The `data/` folder — never delete**
 
 ```
 data/
@@ -232,9 +138,11 @@ data/
 └── cache/             ← temporary cache (auto-regenerated)
 ```
 
-> This folder is excluded from git — your data is always preserved on updates.
+> This folder is excluded from git — your data is preserved across updates.
 
-### systemd Service (Raspberry Pi)
+---
+
+## Run as a service (Raspberry Pi)
 
 ```ini
 [Unit]
@@ -257,33 +165,46 @@ sudo systemctl enable purgearr
 sudo systemctl start purgearr
 ```
 
-### Jellyfin Webhook (optional — do not enable auto mode)
+---
+
+## Jellyfin Webhook (optional)
 
 The webhook receives `PlaybackStop` events from Jellyfin in real time. Install the **Webhook** plugin from the Jellyfin catalog:
 
 - **URL**: `http://[IP]:7979/webhook/jellyfin`
 - **Event**: `Playback Stop`
 
-> ⛔ Even with the webhook active, **do not enable Auto mode** in settings — this feature is still being stabilized.
+> Auto mode (automatic deletion on playback stop) is currently in stabilization — use manual deletion from the interface only.
 
-### Updating
+---
+
+## Updating
 
 ```bash
 git pull
-# Restart the service
 sudo systemctl restart purgearr
 ```
 
-### Tech Stack
+---
 
-| Component | Technology |
-|---|---|
-| Backend | FastAPI + Uvicorn |
-| Database | SQLite via SQLAlchemy |
-| Scheduler | APScheduler |
-| Templates | Jinja2 |
-| Frontend | Vanilla HTML/CSS/JS |
+## Privacy
 
-### License
+Purgearr runs **entirely on your own machine** — no data ever leaves your network.
+
+- No analytics, no telemetry, no external services
+- All API calls go directly to your local Jellyfin, Radarr, Sonarr, and Transmission instances
+- Configuration is stored locally in `data/config.json`
+
+**The source code is fully auditable** — every line is in this repository.
+
+---
+
+## License
 
 MIT — use and adapt freely.
+
+---
+
+<div align="center">
+  Made by <a href="https://github.com/Pestovich">Pestovich</a>
+</div>

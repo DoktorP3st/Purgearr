@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,10 @@ logger = logging.getLogger("purgearr.cleanup_store")
 
 DATA_DIR  = Path(__file__).parent.parent / "data"
 INDEX_PATH = DATA_DIR / "cleanup_index.json"
+
+# Sérialise les cycles lecture-modification-écriture de cleanup_index.json
+# pour éviter qu'une écriture concurrente en écrase une autre.
+INDEX_LOCK = threading.Lock()
 
 
 def load_index() -> list:
@@ -25,7 +30,7 @@ def load_index() -> list:
 
 def save_index(entries: list):
     """Écrit dans un fichier temporaire puis rename atomique — évite la corruption si crash."""
-    DATA_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=INDEX_PATH.name + ".", suffix=".tmp", dir=str(DATA_DIR))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -54,20 +59,21 @@ def add_entry(
 ):
     if not source_hash:
         return
-    entries = load_index()
-    entries.append({
-        "id":                 str(uuid.uuid4())[:8],
-        "item_title":         item_title,
-        "series_title":       series_title,
-        "item_type":          item_type,
-        "jellyfin_item_id":   jellyfin_item_id,
-        "source_hash":        source_hash,
-        "file_path":          file_path,
-        "file_size_bytes":    file_size_bytes,
-        "torrent_name":       torrent_name,
-        "scan_paths":         scan_paths or [],
-        "deleted_at":         datetime.utcnow().isoformat(),
-        "remains_checked_at": None,
-        "remains_found":      None,
-    })
-    save_index(entries)
+    with INDEX_LOCK:
+        entries = load_index()
+        entries.append({
+            "id":                 str(uuid.uuid4())[:8],
+            "item_title":         item_title,
+            "series_title":       series_title,
+            "item_type":          item_type,
+            "jellyfin_item_id":   jellyfin_item_id,
+            "source_hash":        source_hash,
+            "file_path":          file_path,
+            "file_size_bytes":    file_size_bytes,
+            "torrent_name":       torrent_name,
+            "scan_paths":         scan_paths or [],
+            "deleted_at":         datetime.utcnow().isoformat(),
+            "remains_checked_at": None,
+            "remains_found":      None,
+        })
+        save_index(entries)

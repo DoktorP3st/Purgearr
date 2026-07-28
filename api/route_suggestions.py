@@ -262,6 +262,6 @@ def suggestions_page(request: Request, refresh: int = 0):
 
 @router.post("/api/cache/refresh")
 def refresh_cache():
-    """Invalide le cache fichier de la page Suggestions."""
+    """Invalide le cache fichier de la page Suggestions/Catalogue."""
     _cache_clear()
     return JSONResponse({"ok": True})

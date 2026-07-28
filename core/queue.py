@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime
 from typing import List, Optional
 
@@ -11,9 +12,27 @@ from database import DeletionQueue, WatchEvent
 
 logger = logging.getLogger("purgearr.queue")
 
+# Empêche l'exécution simultanée du job planifié et d'un déclenchement manuel
+# (/api/queue/process-now), qui traiteraient sinon deux fois les mêmes items.
+_PROCESS_LOCK = threading.Lock()
+
 
 def process_queue(db: Session):
     """Traite tous les items de la queue dont l'heure planifiée est passée."""
+    from services.factory import get_jellyfin
+    from core.pipeline import delete_movie, delete_episode
+
+    if not _PROCESS_LOCK.acquire(blocking=False):
+        logger.info("[Queue] Traitement déjà en cours — appel ignoré")
+        return
+
+    try:
+        _process_queue_locked(db)
+    finally:
+        _PROCESS_LOCK.release()
+
+
+def _process_queue_locked(db: Session):
     from services.factory import get_jellyfin
     from core.pipeline import delete_movie, delete_episode
 

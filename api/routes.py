@@ -2,13 +2,14 @@ import json
 import logging
 import os
 from datetime import datetime
+from typing import Dict
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from config import get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, resolve_real_path, save_config, save_protected
+from config import PROTECTED_LOCK, get_config, get_extra_paths, get_mode, get_protected, get_rules, get_scan_paths, resolve_real_path, save_config, save_protected
 from i18n import SUPPORTED_LANGUAGES
 from core import eventlog
 from core.pipeline import delete_episode, delete_movie, process_queue
@@ -255,6 +256,44 @@ def protected_page(request: Request):
                     "id": None, "title": title, "type": "Movie",
                     "image_url": "", "source": "title",
                 })
+        # Favoris Jellyfin — protection automatique, indépendante de la whitelist manuelle
+        # favorites_info : { item_id: {"title": str, "type": str, "users": [{"id","name"}, ...]} }
+        favorites_info: Dict[str, Dict] = {}
+        for u in users:
+            try:
+                for it in jf.get_favorite_items(u["Id"]):
+                    entry = favorites_info.setdefault(it["Id"], {
+                        "title": it.get("Name") or it["Id"],
+                        "type":  it.get("Type", "Movie"),
+                        "users": [],
+                    })
+                    entry["users"].append({"id": u["Id"], "name": u.get("Name", "?")})
+            except Exception as e:
+                logger.warning("[Protected] favoris KO pour %s : %s", u.get("Name"), e)
+
+        # Rattacher les favoris aux entrées whitelist déjà listées (par ID, sinon par titre)
+        for p_item in protected_items:
+            if p_item.get("id") and p_item["id"] in favorites_info:
+                p_item["favorited_by"] = favorites_info.pop(p_item["id"])["users"]
+                continue
+            match_id = next(
+                (fid for fid, info in favorites_info.items()
+                 if info["title"].lower() == p_item["title"].lower()),
+                None,
+            )
+            if match_id:
+                p_item["favorited_by"] = favorites_info.pop(match_id)["users"]
+
+        # Ajouter les favoris Jellyfin qui ne sont pas déjà dans la whitelist
+        for fid, info in favorites_info.items():
+            protected_items.append({
+                "id":           fid,
+                "title":        info["title"],
+                "type":         info["type"],
+                "image_url":    f"{jellyfin_url}/Items/{fid}/Images/Primary?fillWidth=220&quality=80&api_key={jellyfin_api_key}",
+                "source":       "favorite",
+                "favorited_by": info["users"],
+            })
     except Exception:
         for jid in (p.get("jellyfin_ids") or []):
             protected_items.append({"id": jid, "title": jid, "type": "Movie", "image_url": "", "source": "id"})
@@ -267,17 +306,18 @@ def protected_page(request: Request):
 
 @router.post("/protected/add")
 def protected_add(title: str = Form(""), jellyfin_id: str = Form("")):
-    p = get_protected()
-    p.setdefault("titles", [])
-    p.setdefault("jellyfin_ids", [])
-    added = []
-    if title and title not in p["titles"]:
-        p["titles"].append(title)
-        added.append(f"titre={title}")
-    if jellyfin_id and jellyfin_id not in p["jellyfin_ids"]:
-        p["jellyfin_ids"].append(jellyfin_id)
-        added.append(f"id={jellyfin_id}")
-    save_protected(p)
+    with PROTECTED_LOCK:
+        p = get_protected()
+        p.setdefault("titles", [])
+        p.setdefault("jellyfin_ids", [])
+        added = []
+        if title and title not in p["titles"]:
+            p["titles"].append(title)
+            added.append(f"titre={title}")
+        if jellyfin_id and jellyfin_id not in p["jellyfin_ids"]:
+            p["jellyfin_ids"].append(jellyfin_id)
+            added.append(f"id={jellyfin_id}")
+        save_protected(p)
     if added:
         eventlog.info("protection", f"Whitelist + {' / '.join(added)}")
     return RedirectResponse("/protected", status_code=303)
@@ -285,17 +325,37 @@ def protected_add(title: str = Form(""), jellyfin_id: str = Form("")):
 
 @router.post("/protected/remove")
 def protected_remove(title: str = Form(""), jellyfin_id: str = Form("")):
-    p = get_protected()
-    removed = []
-    if title in p.get("titles", []):
-        p["titles"].remove(title)
-        removed.append(f"titre={title}")
-    if jellyfin_id in p.get("jellyfin_ids", []):
-        p["jellyfin_ids"].remove(jellyfin_id)
-        removed.append(f"id={jellyfin_id}")
-    save_protected(p)
+    with PROTECTED_LOCK:
+        p = get_protected()
+        removed = []
+        if title in p.get("titles", []):
+            p["titles"].remove(title)
+            removed.append(f"titre={title}")
+        if jellyfin_id in p.get("jellyfin_ids", []):
+            p["jellyfin_ids"].remove(jellyfin_id)
+            removed.append(f"id={jellyfin_id}")
+        save_protected(p)
     if removed:
         eventlog.info("protection", f"Whitelist − {' / '.join(removed)}")
+    return RedirectResponse("/protected", status_code=303)
+
+
+@router.post("/protected/remove_favorite")
+def protected_remove_favorite(jellyfin_id: str = Form(...), user_ids: str = Form(...)):
+    """Retire le favori Jellyfin (un ou plusieurs comptes) pour débloquer la suppression."""
+    jf = get_jellyfin()
+    removed, errors = [], []
+    for uid in [u for u in user_ids.split(",") if u]:
+        try:
+            jf.remove_favorite(uid, jellyfin_id)
+            removed.append(uid)
+        except Exception as e:
+            errors.append(str(e))
+            logger.warning("[Protected] remove_favorite KO (user=%s, item=%s) : %s", uid, jellyfin_id, e)
+    if removed:
+        eventlog.info("protection", f"Favori Jellyfin retiré ({len(removed)} compte(s))", jellyfin_id=jellyfin_id)
+    if errors:
+        eventlog.warning("protection", f"Échec retrait favori : {'; '.join(errors)}", jellyfin_id=jellyfin_id)
     return RedirectResponse("/protected", status_code=303)
 
 

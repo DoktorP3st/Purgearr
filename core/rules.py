@@ -18,19 +18,19 @@ def is_protected(item_id: str, title: str) -> bool:
 def _threshold(item_type: str) -> float:
     rules = get_rules()
     section = "movies" if item_type == "Movie" else "series"
-    return (
-        rules.get(section, {}).get("watch_percentage_threshold")
-        or rules.get("watch_percentage_threshold", 85)
-    )
+    value = rules.get(section, {}).get("watch_percentage_threshold")
+    if value is None:
+        value = rules.get("watch_percentage_threshold", 85)
+    return value
 
 
 def _delay_hours(item_type: str) -> int:
     rules = get_rules()
     section = "movies" if item_type == "Movie" else "series"
-    return (
-        rules.get(section, {}).get("deletion_delay_hours")
-        or rules.get("deletion_delay_hours", 0)
-    )
+    value = rules.get(section, {}).get("deletion_delay_hours")
+    if value is None:
+        value = rules.get("deletion_delay_hours", 0)
+    return value
 
 
 def meets_percentage(percentage: float, item_type: str) -> bool:

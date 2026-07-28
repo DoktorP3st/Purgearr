@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from config import get_rules, get_scan_paths
 from core import eventlog
-from core.fileops import hash_file, run_cleanup
+from core.fileops import collect_signatures, run_cleanup
 from database import DeletionHistory
 from services.factory import get_jellyfin, get_radarr, get_sonarr, get_transmission
 
@@ -85,10 +85,11 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
         eventlog.warning("service", f"Jellyfin favoris indisponibles : {e}", title=title)
 
-    # 0.5 Empreinte SHA-256 AVANT suppression — pour retrouver les copies par hash
-    # (si source_hash fourni par le scan manuel, on l'utilise directement)
-    if not source_hash and file_path and os.path.isfile(file_path):
-        source_hash = hash_file(file_path)
+    # 0.5 Empreintes AVANT suppression — pour retrouver toutes les copies (fichier
+    # unique ou dossier entier) une fois Radarr aura supprimé la source
+    known_signatures = collect_signatures(file_path) if file_path else []
+    if not source_hash and known_signatures:
+        source_hash = known_signatures[0]["hash"]
         logger.debug(f"[Pipeline] Hash source calculé avant suppression : {source_hash[:12]}…")
 
     # Taille du fichier source (avant que Radarr ne le supprime)
@@ -142,15 +143,23 @@ def delete_movie(db: Session, item: Dict, triggered_by: str, source_hash: str = 
         result["errors"].append(f"Radarr: {e}")
         logger.error(f"[Radarr] Erreur pour '{title}': {e}")
 
-    # 2.5 Nettoyage des copies (hash pré-calculé = pas de fallback titre hasardeux)
+    # 2.5 Nettoyage des copies (signatures pré-calculées = pas de fallback titre hasardeux)
     try:
-        result["cleanup"] = run_cleanup(title, file_path, get_scan_paths("Movie"), source_hash=source_hash)
+        result["cleanup"] = run_cleanup(title, file_path, get_scan_paths("Movie"), known_signatures=known_signatures)
     except Exception as e:
         logger.warning(f"[Fileops] Erreur nettoyage copies : {e}")
 
-    # 3. Jellyfin — refresh bibliothèque
+    # 3. Jellyfin — suppression immédiate de l'item + refresh bibliothèque
+    # (le refresh seul est asynchrone côté Jellyfin : l'item peut rester visible
+    # dans le catalogue tant que le scan n'a pas tourné — delete_item est immédiat)
     try:
-        get_jellyfin().refresh_library()
+        jf = get_jellyfin()
+        if result["success"] and item.get("jellyfin_id"):
+            try:
+                jf.delete_item(item["jellyfin_id"])
+            except Exception as e:
+                logger.warning(f"[Jellyfin] delete_item KO pour '{title}': {e}")
+        jf.refresh_library()
         result["services"].append("jellyfin")
     except Exception as e:
         result["errors"].append(f"Jellyfin refresh: {e}")
@@ -215,9 +224,11 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
         logger.warning(f"[Pipeline] Impossible de vérifier les favoris: {e}")
         eventlog.warning("service", f"Jellyfin favoris indisponibles : {e}", title=title)
 
-    # 0.5 Empreinte SHA-256 AVANT suppression
-    if not source_hash and file_path and os.path.isfile(file_path):
-        source_hash = hash_file(file_path)
+    # 0.5 Empreintes AVANT suppression — pour retrouver toutes les copies (épisode
+    # unique ou dossier série entière) une fois Sonarr aura supprimé la source
+    known_signatures = collect_signatures(file_path) if file_path else []
+    if not source_hash and known_signatures:
+        source_hash = known_signatures[0]["hash"]
 
     # Taille du fichier source (avant que Sonarr ne le supprime)
     file_size = os.path.getsize(file_path) if file_path and os.path.isfile(file_path) else 0
@@ -297,16 +308,24 @@ def delete_episode(db: Session, item: Dict, triggered_by: str, source_hash: str 
         result["errors"].append(f"Sonarr: {e}")
         logger.error(f"[Sonarr] Erreur pour '{series_title}': {e}")
 
-    # 2.5 Nettoyage des copies (hash pré-calculé)
+    # 2.5 Nettoyage des copies (signatures pré-calculées)
     try:
         cleanup_title = series_title if delete_mode == "series" else title
-        result["cleanup"] = run_cleanup(cleanup_title, file_path, get_scan_paths("Episode"), source_hash=source_hash)
+        result["cleanup"] = run_cleanup(cleanup_title, file_path, get_scan_paths("Episode"), known_signatures=known_signatures)
     except Exception as e:
         logger.warning(f"[Fileops] Erreur nettoyage copies : {e}")
 
-    # 3. Jellyfin — refresh
+    # 3. Jellyfin — suppression immédiate de l'item + refresh bibliothèque
+    # (le refresh seul est asynchrone côté Jellyfin : l'item peut rester visible
+    # dans le catalogue tant que le scan n'a pas tourné — delete_item est immédiat)
     try:
-        get_jellyfin().refresh_library()
+        jf = get_jellyfin()
+        if result["success"] and item.get("jellyfin_id"):
+            try:
+                jf.delete_item(item["jellyfin_id"])
+            except Exception as e:
+                logger.warning(f"[Jellyfin] delete_item KO pour '{series_title} — {title}': {e}")
+        jf.refresh_library()
         result["services"].append("jellyfin")
     except Exception as e:
         result["errors"].append(f"Jellyfin refresh: {e}")
