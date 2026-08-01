@@ -206,5 +206,5 @@ MIT — usa e adapta livremente.
 ---
 
 <div align="center">
-  Made by <a href="https://github.com/Pestovich">Pestovich</a>
+  Made by <a href="https://github.com/Lekarov">Pestovich</a>
 </div>
